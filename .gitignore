@@ -1,0 +1,8 @@
+*.exe
+*.dll
+*.exp
+*.lib
+*.ttf
+*.txt
+*.ini
+cache/
