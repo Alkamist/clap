@@ -11,6 +11,7 @@ const clapHeader = currentSourceDir() & "/clap/clap.h"
 """.}
 
 const CLAP_NAME_SIZE* = 256
+const CLAP_PATH_SIZE* = 1024
 
 type
   clap_version_t* {.importc, header: clapHeader.} = object
@@ -134,6 +135,26 @@ type
     ctx*: pointer
     try_push*: proc(list: ptr clap_output_events_t, event: ptr clap_event_header_t): bool {.cdecl.}
 
+  clap_param_info_flags* = uint32
+
+  clap_param_info_t* {.importc, header: clapHeader.} = object
+    id*: clap_id
+    flags*: clap_param_info_flags
+    cookie*: pointer
+    name*: array[CLAP_NAME_SIZE, char]
+    module*: array[CLAP_PATH_SIZE, char]
+    min_value*: cdouble
+    max_value*: cdouble
+    default_value*: cdouble
+
+  clap_plugin_params_t* {.importc, header: clapHeader.} = object
+    count*: proc(plugin: ptr clap_plugin_t): uint32 {.cdecl.}
+    get_info*: proc(plugin: ptr clap_plugin_t, param_index: uint32, param_info: ptr clap_param_info_t): bool {.cdecl.}
+    get_value*: proc(plugin: ptr clap_plugin_t, param_id: clap_id, out_value: ptr cdouble): bool {.cdecl.}
+    value_to_text*: proc(plugin: ptr clap_plugin_t, param_id: clap_id, value: cdouble, out_buffer: ptr UncheckedArray[char], out_buffer_capacity: uint32): bool {.cdecl.}
+    text_to_value*: proc(plugin: ptr clap_plugin_t, param_id: clap_id, param_value_text: cstring, out_value: ptr cdouble): bool {.cdecl.}
+    flush*: proc(plugin: ptr clap_plugin_t, `in`: ptr clap_input_events_t, `out`: ptr clap_output_events_t) {.cdecl.}
+
   clap_process_t* {.importc, header: clapHeader.} = object
     steady_time*: int64
     frames_count*: uint32
@@ -207,10 +228,31 @@ const CLAP_EVENT_MIDI* = 10
 const CLAP_EVENT_MIDI_SYSEX* = 11
 const CLAP_EVENT_MIDI2* = 12
 
+const CLAP_CORE_EVENT_SPACE_ID* = 0
+
 const CLAP_AUDIO_PORT_IS_MAIN* = 1 shl 0
 const CLAP_AUDIO_PORT_SUPPORTS_64BITS* = 1 shl 1
 const CLAP_AUDIO_PORT_PREFERS_64BITS* = 1 shl 2
 const CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE* = 1 shl 3
+
+const CLAP_PARAM_IS_STEPPED* = 1 shl 0
+const CLAP_PARAM_IS_PERIODIC* = 1 shl 1
+const CLAP_PARAM_IS_HIDDEN* = 1 shl 2
+const CLAP_PARAM_IS_READONLY* = 1 shl 3
+const CLAP_PARAM_IS_BYPASS* = 1 shl 4
+const CLAP_PARAM_IS_AUTOMATABLE* = 1 shl 5
+const CLAP_PARAM_IS_AUTOMATABLE_PER_NOTE_ID* = 1 shl 6
+const CLAP_PARAM_IS_AUTOMATABLE_PER_KEY* = 1 shl 7
+const CLAP_PARAM_IS_AUTOMATABLE_PER_CHANNEL* = 1 shl 8
+const CLAP_PARAM_IS_AUTOMATABLE_PER_PORT* = 1 shl 9
+const CLAP_PARAM_IS_MODULATABLE* = 1 shl 10
+const CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID* = 1 shl 11
+const CLAP_PARAM_IS_MODULATABLE_PER_KEY* = 1 shl 12
+const CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL* = 1 shl 13
+const CLAP_PARAM_IS_MODULATABLE_PER_PORT* = 1 shl 14
+const CLAP_PARAM_REQUIRES_PROCESS* = 1 shl 15
+const CLAP_EXT_PARAMS* = cstring"clap.params"
+const CLAP_EXT_STATE* = cstring"clap.state"
 
 const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
 const CLAP_PORT_MONO* = cstring"mono"

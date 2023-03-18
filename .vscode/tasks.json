@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+      {
+          "label": "nim: build current file (for debugging)",
+          "command": "nim",
+          "args": [
+              "c",
+              "--app:lib",
+              "--gc:arc",
+              "--noMain",
+              "--debugger:native",
+              "--o:gain.clap",
+              "gainplugin.nim"
+          ],
+          "options": {
+              "cwd": "${workspaceRoot}"
+          },
+          "type": "shell",
+      }
+  ]
+}
