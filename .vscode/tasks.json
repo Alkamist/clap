@@ -6,6 +6,7 @@
           "command": "nim",
           "args": [
               "c",
+              "-f",
               "--app:lib",
               "--gc:arc",
               "--noMain",

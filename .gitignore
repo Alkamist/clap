@@ -5,4 +5,5 @@
 *.ttf
 *.txt
 *.ini
+*.clap
 cache/

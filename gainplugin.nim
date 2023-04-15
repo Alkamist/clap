@@ -1,9 +1,17 @@
 import clap
 
-type
-  GainPlugin* = ref object of clap.Plugin
+let gainPlugin = clap.Plugin()
 
-method init*(plugin: GainPlugin) =
+gainPlugin.id = "com.alkamist.gain"
+gainPlugin.name = "Gain"
+gainPlugin.vendor = "Alkamist Audio"
+gainPlugin.url = ""
+gainPlugin.manualUrl = ""
+gainPlugin.supportUrl = ""
+gainPlugin.version = "0.1.0"
+gainPlugin.description = ""
+
+gainPlugin.init = proc(plugin: Plugin) =
   plugin.addParameter(
     name = "Gain",
     module = "",
@@ -12,20 +20,9 @@ method init*(plugin: GainPlugin) =
     defaultValue = 0.7,
   )
 
-method processAudio*(plugin: GainPlugin, inputs, outputs: HostAudioBuffer, start, finish: int) =
-  let channelCount = outputs[0].channelCount
-  for c in 0 ..< channelCount:
-    for s in start ..< finish:
-      outputs[0].data32[c][s] = inputs[0].data32[c][s] * plugin.parameterValueAudioThread[0]
+gainPlugin.processAudio = proc(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) =
+  for c in 0 ..< outputs[0].channelCount:
+    for s in startFrame ..< endFrame:
+      outputs[0][c][s] = inputs[0][c][s] * plugin.parameter(0)
 
-clap.addPlugin(GainPlugin,
-  id = "com.alkamist.gain",
-  name = "Gain",
-  vendor = "Alkamist Audio",
-  url = "",
-  manualUrl = "",
-  supportUrl = "",
-  version = "0.1.0",
-  description = "",
-  features = ["utility", "mixing"],
-)
+clap.plugins.add(gainPlugin)

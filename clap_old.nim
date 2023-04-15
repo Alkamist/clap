@@ -1,62 +1,75 @@
+# import std/strutils
 import std/locks
-import ./binding; export binding
+import ./clap/binding
 
 type
-  AudioBuffer* = clap_audio_buffer_t
+  HostAudioBuffer* = ptr UncheckedArray[clap_audio_buffer_t]
 
-template `[]`*(buffer: AudioBuffer, channel: auto): untyped =
-  cast[ptr UncheckedArray[ptr UncheckedArray[cfloat]]](buffer.data32)[channel]
-
-type
-  ParameterInfo = object
+  ParameterInfo* = object
     name*: string
     module*: string
     minValue*: float
     maxValue*: float
     defaultValue*: float
 
-  Plugin* = ref object
-    init*: proc(plugin: Plugin)
-    processAudio*: proc(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int)
+  Plugin* = ref object of RootObj
     sampleRate*: float
     parameterCount: int
     parameterInfo: seq[ParameterInfo]
     parameterValueMainThread: seq[float]
-    parameterValueAudioThread: seq[float]
+    parameterValueAudioThread*: seq[float]
     parameterChangedMainThread: seq[bool]
     parameterChangedAudioThread: seq[bool]
     parameterLock: Lock
+
+  PluginInfo = ref object
     descriptor: clap_plugin_descriptor_t
+    createInstance: proc(info: PluginInfo): ptr clap_plugin_t
 
-proc `id=`*(plugin: Plugin, value: string) = plugin.descriptor.id = value.cstring
-proc `name=`*(plugin: Plugin, value: string) = plugin.descriptor.name = value.cstring
-proc `vendor=`*(plugin: Plugin, value: string) = plugin.descriptor.vendor = value.cstring
-proc `url=`*(plugin: Plugin, value: string) = plugin.descriptor.url = value.cstring
-proc `manualUrl=`*(plugin: Plugin, value: string) = plugin.descriptor.manualUrl = value.cstring
-proc `supportUrl=`*(plugin: Plugin, value: string) = plugin.descriptor.supportUrl = value.cstring
-proc `version=`*(plugin: Plugin, value: string) = plugin.descriptor.version = value.cstring
-proc `description=`*(plugin: Plugin, value: string) = plugin.descriptor.description = value.cstring
-# proc `features=`*(plugin: Plugin, value: openArray[string]) = plugin.descriptor.features = value.cstring
+method init*(plugin: Plugin) {.base.} = discard
+method processAudio*(plugin: Plugin, inputs, outputs: HostAudioBuffer, start, finish: int) {.base.} = discard
 
-proc parameter*(plugin: Plugin, i: int): float = plugin.parameterValueAudioThread[i]
-proc addParameter*(plugin: Plugin,
-                   name: string,
-                   module: string,
-                   minValue: float,
-                   maxValue: float,
-                   defaultValue: float) =
-  plugin.parameterCount += 1
-  plugin.parameterInfo.add ParameterInfo(
-    name: name,
-    module: module,
-    minValue: minValue,
-    maxValue: maxValue,
-    defaultValue: defaultValue,
-  )
-  plugin.parameterValueMainThread.add defaultValue
-  plugin.parameterValueAudioThread.add defaultValue
-  plugin.parameterChangedMainThread.add false
-  plugin.parameterChangedAudioThread.add false
+var pluginInfo: seq[PluginInfo]
+
+var clapPluginFactory = clap_plugin_factory_t(
+  get_plugin_count: proc(factory: ptr clap_plugin_factory_t): uint32 {.cdecl.} =
+    return pluginInfo.len.uint32
+
+  , get_plugin_descriptor: proc(factory: ptr clap_plugin_factory_t, index: uint32): ptr clap_plugin_descriptor_t {.cdecl.} =
+    return pluginInfo[index].descriptor.addr
+
+  , create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
+    if not clap_version_is_compatible(host.clap_version):
+      return nil
+
+    for info in pluginInfo:
+      if plugin_id == info.descriptor.id:
+        return info.createInstance(info)
+
+    return nil
+)
+
+proc NimMain() {.importc.}
+
+proc main_init(plugin_path: cstring): bool {.cdecl.} =
+  NimMain()
+  return true
+
+proc main_deinit() {.cdecl.} =
+  discard
+
+proc main_get_factory(factory_id: cstring): pointer {.cdecl.} =
+  if factory_id == CLAP_PLUGIN_FACTORY_ID:
+    return clapPluginFactory.addr
+
+{.emit: """
+CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
+  .clap_version = CLAP_VERSION_INIT,
+  .init = `main_init`,
+  .deinit = `main_deinit`,
+  .get_factory = `main_get_factory`,
+};
+""".}
 
 proc syncMainThreadToAudioThread(plugin: Plugin, outputEvents: ptr clap_output_events_t) =
   acquire(plugin.parameterLock)
@@ -93,19 +106,18 @@ proc syncAudioThreadToMainThread(plugin: Plugin) =
 
   release(plugin.parameterLock)
 
-var plugins*: seq[Plugin]
-
 proc plugin_init(plugin: ptr clap_plugin_t): bool {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
   initLock(p.parameterLock)
-  if p.init != nil:
-    p.init(p)
+  p.init()
   return true
 
 proc plugin_destroy(plugin: ptr clap_plugin_t) {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
   deinitLock(p.parameterLock)
+  GC_unref(p)
   dealloc(plugin)
+  discard
 
 proc plugin_activate(plugin: ptr clap_plugin_t, sample_rate: cdouble, min_frames_count, max_frames_count: uint32): bool {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
@@ -160,12 +172,7 @@ proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
         nextEventIndex = frameCount
         break
 
-    if p.processAudio != nil:
-      p.processAudio(p,
-        cast[ptr UncheckedArray[AudioBuffer]](process.audio_inputs).toOpenArray(0, process.audio_inputs_count.int),
-        cast[ptr UncheckedArray[AudioBuffer]](process.audio_outputs).toOpenArray(0, process.audio_outputs_count.int),
-        frame.int, nextEventIndex.int,
-      )
+    p.processAudio(process.audio_inputs.addr, process.audio_outputs.addr, frame.int, nextEventIndex.int)
 
     frame = nextEventIndex
 
@@ -279,104 +286,81 @@ var audioPortsExtension = clap_plugin_audio_ports_t(
     return true
 )
 
-proc plugin_get_extension(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.} =
+proc get_extension(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.} =
   if id == CLAP_EXT_AUDIO_PORTS: return audioPortsExtension.addr
   if id == CLAP_EXT_PARAMS: return paramsExtension.addr
   if id == CLAP_EXT_STATE: return stateExtension.addr
   return nil
 
-proc plugin_on_main_thread(plugin: ptr clap_plugin_t) {.cdecl.} =
+proc on_main_thread(plugin: ptr clap_plugin_t) {.cdecl.} =
   discard
 
-var clapFactory = clap_plugin_factory_t(
-  get_plugin_count: proc(factory: ptr clap_plugin_factory_t): uint32 {.cdecl.} =
-    return plugins.len.uint32
+proc addParameter*(plugin: Plugin,
+                   name: string,
+                   module: string,
+                   minValue: float,
+                   maxValue: float,
+                   defaultValue: float) =
+  plugin.parameterCount += 1
+  plugin.parameterInfo.add ParameterInfo(
+    name: name,
+    module: module,
+    minValue: minValue,
+    maxValue: maxValue,
+    defaultValue: defaultValue,
+  )
+  plugin.parameterValueMainThread.add defaultValue
+  plugin.parameterValueAudioThread.add defaultValue
+  plugin.parameterChangedMainThread.add false
+  plugin.parameterChangedAudioThread.add false
 
-  , get_plugin_descriptor: proc(factory: ptr clap_plugin_factory_t, index: uint32): ptr clap_plugin_descriptor_t {.cdecl.} =
-    return plugins[index].descriptor.addr
+proc addPlugin*(T: typedesc,
+                id: string,
+                name: string,
+                vendor = "",
+                url = "",
+                manualUrl = "",
+                supportUrl = "",
+                version = "",
+                description = "",
+                features: openArray[string] = []) =
+  # var pluginFeatures = newSeq[cstring](features.len)
+  # for i, feature in features:
+  #   pluginFeatures[i] = feature.cstring
+  # pluginFeatures[-1] = nil
 
-  , create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
-    if not clap_version_is_compatible(host.clap_version):
-      return nil
+  var info = PluginInfo(
+    descriptor: clap_plugin_descriptor_t(
+      clap_version: clap_version_t(major: 1, minor: 1, revision: 7),
+      id: id,
+      name: name,
+      vendor: vendor,
+      url: url,
+      manual_url: manualUrl,
+      support_url: supportUrl,
+      version: version,
+      description: description,
+      # features: pluginFeatures[0].addr,
+      features: nil,
+    ),
+  )
 
-    for plugin in plugins:
-      if plugin_id == plugin.descriptor.id:
-        var clapPlugin = create(clap_plugin_t)
-        clapPlugin.plugin_data = cast[pointer](plugin)
-        clapPlugin.desc = plugin.descriptor.addr
-        clapPlugin.init = plugin_init
-        clapPlugin.destroy = plugin_destroy
-        clapPlugin.activate = plugin_activate
-        clapPlugin.deactivate = plugin_deactivate
-        clapPlugin.start_processing = plugin_start_processing
-        clapPlugin.stop_processing = plugin_stop_processing
-        clapPlugin.reset = plugin_reset
-        clapPlugin.process = plugin_process
-        clapPlugin.get_extension = plugin_get_extension
-        clapPlugin.on_main_thread = plugin_on_main_thread
-        return clapPlugin
-)
+  info.createInstance = proc(info: PluginInfo): ptr clap_plugin_t =
+    var p = create(clap_plugin_t)
+    p.desc = info.descriptor.addr
+    var data = T()
+    GC_ref(data)
+    p.plugin_data = cast[pointer](data)
+    p.init = plugin_init
+    p.destroy = plugin_destroy
+    p.activate = plugin_activate
+    p.deactivate = plugin_deactivate
+    p.start_processing = plugin_start_processing
+    p.stop_processing = plugin_stop_processing
+    p.reset = plugin_reset
+    p.process = plugin_process
+    p.get_extension = get_extension
+    p.on_main_thread = on_main_thread
+    return p
 
-proc NimMain() {.importc.}
-
-proc main_init(plugin_path: cstring): bool {.cdecl.} =
-  NimMain()
-  return true
-
-proc main_deinit() {.cdecl.} =
-  discard
-
-proc main_get_factory(factory_id: cstring): pointer {.cdecl.} =
-  if factory_id == CLAP_PLUGIN_FACTORY_ID:
-    return clapFactory.addr
-
-{.emit: """
-#if !defined(CLAP_EXPORT)
-#   if defined _WIN32 || defined __CYGWIN__
-#      ifdef __GNUC__
-#         define CLAP_EXPORT __attribute__((dllexport))
-#      else
-#         define CLAP_EXPORT __declspec(dllexport)
-#      endif
-#   else
-#      if __GNUC__ >= 4 || defined(__clang__)
-#         define CLAP_EXPORT __attribute__((visibility("default")))
-#      else
-#         define CLAP_EXPORT
-#      endif
-#   endif
-#endif
-
-#if !defined(CLAP_ABI)
-#   if defined _WIN32 || defined __CYGWIN__
-#      define CLAP_ABI __cdecl
-#   else
-#      define CLAP_ABI
-#   endif
-#endif
-
-typedef struct clap_version {
-  uint32_t major;
-  uint32_t minor;
-  uint32_t revision;
-} clap_version_t;
-
-typedef struct clap_plugin_entry {
-  clap_version_t clap_version;
-  bool(CLAP_ABI *init)(const char *plugin_path);
-  void(CLAP_ABI *deinit)(void);
-  const void *(CLAP_ABI *get_factory)(const char *factory_id);
-} clap_plugin_entry_t;
-
-#define CLAP_VERSION_MAJOR 1
-#define CLAP_VERSION_MINOR 1
-#define CLAP_VERSION_REVISION 7
-#define CLAP_VERSION_INIT { (uint32_t)CLAP_VERSION_MAJOR, (uint32_t)CLAP_VERSION_MINOR, (uint32_t)CLAP_VERSION_REVISION }
-
-CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
-  .clap_version = CLAP_VERSION_INIT,
-  .init = `main_init`,
-  .deinit = `main_deinit`,
-  .get_factory = `main_get_factory`,
-};
-""".}
+  pluginInfo.add info
