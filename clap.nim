@@ -2,6 +2,29 @@ import std/locks
 import ./binding; export binding
 
 type
+  reaper_plugin_info_t {.bycopy.} = object
+    caller_version*: cint
+    hwnd_main*: int
+    Register*: proc(name: cstring; infostruct: pointer): cint {.cdecl.}
+    GetFunc*: proc(name: cstring): pointer {.cdecl.}
+
+var ShowConsoleMsg: proc(msg: cstring) {.cdecl.}
+var ShowMessageBox: proc(msg: cstring; title: cstring; `type`: cint): cint {.cdecl.}
+
+globalRaiseHook = proc(e: ref Exception): bool {.gcsafe, locks: 0.} =
+  discard ShowMessageBox(
+    msg = (e.msg & "\n\n" & "Stack Trace:\n\n" & e.getStackTrace()).cstring,
+    title = "Clap Plugin Error:",
+    `type` = 0, # Ok
+  )
+
+proc print*(x: varargs[string, `$`]) =
+  var output = ""
+  for msg in x:
+    output = output & msg
+  ShowConsoleMsg(output.cstring)
+
+type
   AudioBuffer* = clap_audio_buffer_t
 
 template `[]`*(buffer: AudioBuffer, channel: auto): untyped =
@@ -11,6 +34,21 @@ type
   PluginCreator = object
     descriptor: clap_plugin_descriptor_t
     createInstance: proc(): pointer
+
+  NoteKind* = enum
+    On
+    Off
+    Choke
+    End
+
+  Note* = object
+    kind*: NoteKind
+    frame*: uint32
+    id*: int32
+    port*: int16
+    channel*: int16
+    key*: int16
+    velocity*: float
 
   ParameterInfo = object
     name*: string
@@ -30,6 +68,7 @@ type
     parameterLock: Lock
 
 method init*(plugin: Plugin) {.base.} = discard
+method processNote*(plugin: Plugin, note: Note) {.base.} = discard
 method processAudio*(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) {.base.} = discard
 
 proc parameter*(plugin: Plugin, id: int): float = plugin.parameterValueAudioThread[id]
@@ -159,7 +198,7 @@ proc plugin_stop_processing(plugin: ptr clap_plugin_t) {.cdecl.} =
 proc plugin_reset(plugin: ptr clap_plugin_t) {.cdecl.} =
   discard
 
-proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): clap_process_status {.cdecl.} =
+proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): int32 {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
 
   let frameCount = process.frames_count
@@ -179,6 +218,7 @@ proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
 
       if eventHeader.space_id == CLAP_CORE_EVENT_SPACE_ID:
         case eventHeader.`type`:
+
         of CLAP_EVENT_PARAM_VALUE:
           let event = cast[ptr clap_event_param_value_t](eventHeader)
           let parameterId = event.param_id
@@ -186,6 +226,25 @@ proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
           p.parameterValueAudioThread[parameterId] = event.value
           p.parameterChangedAudioThread[parameterId] = true
           release(p.parameterLock)
+
+        of CLAP_EVENT_NOTE_ON .. CLAP_EVENT_NOTE_END:
+          let event = cast[ptr clap_event_note_t](eventHeader)
+          let kind = case eventHeader.`type`:
+            of CLAP_EVENT_NOTE_ON: NoteKind.On
+            of CLAP_EVENT_NOTE_OFF: NoteKind.Off
+            of CLAP_EVENT_NOTE_CHOKE: NoteKind.Choke
+            of CLAP_EVENT_NOTE_END: NoteKind.End
+            else: NoteKind.On
+          p.processNote(Note(
+            kind: kind,
+            frame: eventHeader.time,
+            id: event.note_id,
+            port: event.port_index,
+            channel: event.channel,
+            key: event.key,
+            velocity: event.velocity,
+          ))
+
         else:
           discard
 
@@ -313,10 +372,23 @@ var audioPortsExtension = clap_plugin_audio_ports_t(
     return true
 )
 
+var notePortsExtension = clap_plugin_note_ports_t(
+  count: proc(plugin: ptr clap_plugin_t, is_input: bool): uint32 {.cdecl.} =
+    return 1
+
+  , get: proc(plugin: ptr clap_plugin_t, index: uint32, is_input: bool, info: ptr clap_note_port_info_t): bool {.cdecl.} =
+    info.id = 0
+    info.supported_dialects = CLAP_NOTE_DIALECT_MIDI
+    info.preferred_dialect = CLAP_NOTE_DIALECT_MIDI
+    info.name = cast[array[CLAP_NAME_SIZE, char]](cstring"MIDI Port 1")
+    return true
+)
+
 proc plugin_get_extension(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.} =
   if id == CLAP_EXT_AUDIO_PORTS: return audioPortsExtension.addr
   if id == CLAP_EXT_PARAMS: return paramsExtension.addr
   if id == CLAP_EXT_STATE: return stateExtension.addr
+  if id == CLAP_EXT_NOTE_PORTS: return notePortsExtension.addr
   return nil
 
 proc plugin_on_main_thread(plugin: ptr clap_plugin_t) {.cdecl.} =
@@ -332,6 +404,10 @@ var clapFactory = clap_plugin_factory_t(
   , create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
     if not clap_version_is_compatible(host.clap_version):
       return nil
+
+    let reaperPluginInfo = cast[ptr reaper_plugin_info_t](host.get_extension(host, "cockos.reaper_extension"))
+    ShowConsoleMsg = cast[proc(msg: cstring) {.cdecl.}](reaperPluginInfo.GetFunc("ShowConsoleMsg"))
+    ShowMessageBox = cast[proc(msg: cstring; title: cstring; `type`: cint): cint {.cdecl.}](reaperPluginInfo.GetFunc("ShowMessageBox"))
 
     for i in 0 ..< pluginCreators.len:
       if plugin_id == pluginCreators[i].descriptor.id:

@@ -9,6 +9,9 @@ type
 method init*(plugin: GainPlugin) =
   plugin.addParameter(Gain, "Gain", 0.0, 1.0, 0.7)
 
+method processNote*(plugin: GainPlugin, note: Note) =
+  print note
+
 method processAudio*(plugin: GainPlugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) =
   for c in 0 ..< outputs[0].channelCount:
     for s in startFrame ..< endFrame:

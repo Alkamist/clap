@@ -21,12 +21,6 @@ type
 
   clap_id* = uint32
 
-  clap_note_dialect* {.size: sizeof(cint).} = enum
-    CLAP_NOTE_DIALECT_CLAP = 1 shl 0,
-    CLAP_NOTE_DIALECT_MIDI = 1 shl 1,
-    CLAP_NOTE_DIALECT_MIDI_MPE = 1 shl 2,
-    CLAP_NOTE_DIALECT_MIDI2 = 1 shl 3,
-
   clap_note_port_info_t* {.bycopy.} = object
     id*: clap_id
     supported_dialects*: uint32
@@ -64,13 +58,6 @@ type
     save*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_ostream_t): bool {.cdecl.}
     load*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cdecl.}
 
-  clap_process_status* {.size: sizeof(int32).} = enum
-    CLAP_PROCESS_ERROR = 0,
-    CLAP_PROCESS_CONTINUE = 1,
-    CLAP_PROCESS_CONTINUE_IF_NOT_QUIET = 2,
-    CLAP_PROCESS_TAIL = 3,
-    CLAP_PROCESS_SLEEP = 4,
-
   clap_event_header_t* {.bycopy.} = object
    size*: uint32
    time*: uint32
@@ -106,6 +93,19 @@ type
     bar_number*: int32
     tsig_num*: uint16
     tsig_denom*: uint16
+
+  clap_event_note_t* {.bycopy.} = object
+    header*: clap_event_header_t
+    note_id*: int32
+    port_index*: int16
+    channel*: int16
+    key*: int16
+    velocity*: cdouble
+
+  clap_event_midi_t* {.bycopy.} = object
+   header*: clap_event_header_t
+   port_index*: uint16
+   data*: array[3, uint8]
 
   clap_audio_buffer_t* {.bycopy.} = object
     data32*: ptr ptr cfloat
@@ -164,7 +164,7 @@ type
     start_processing*: proc(plugin: ptr clap_plugin_t): bool {.cdecl.}
     stop_processing*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
     reset*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
-    process*: proc(plugin: ptr clap_plugin_t, process: ptr clap_process_t): clap_process_status {.cdecl.}
+    process*: proc(plugin: ptr clap_plugin_t, process: ptr clap_process_t): int32 {.cdecl.}
     get_extension*: proc(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.}
     on_main_thread*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
 
@@ -201,6 +201,7 @@ type
     create_plugin*: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.}
 
 const CLAP_VERSION_INIT* = clap_version_t(major: 1, minor: 1, revision: 7)
+template clap_version_is_compatible*(v: clap_version_t): bool = v.major >= 1
 
 const CLAP_EVENT_NOTE_ON* = 0
 const CLAP_EVENT_NOTE_OFF* = 1
@@ -215,14 +216,11 @@ const CLAP_EVENT_TRANSPORT* = 9
 const CLAP_EVENT_MIDI* = 10
 const CLAP_EVENT_MIDI_SYSEX* = 11
 const CLAP_EVENT_MIDI2* = 12
-
 const CLAP_CORE_EVENT_SPACE_ID* = 0
-
 const CLAP_AUDIO_PORT_IS_MAIN* = 1 shl 0
 const CLAP_AUDIO_PORT_SUPPORTS_64BITS* = 1 shl 1
 const CLAP_AUDIO_PORT_PREFERS_64BITS* = 1 shl 2
 const CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE* = 1 shl 3
-
 const CLAP_PARAM_IS_STEPPED* = 1 shl 0
 const CLAP_PARAM_IS_PERIODIC* = 1 shl 1
 const CLAP_PARAM_IS_HIDDEN* = 1 shl 2
@@ -239,17 +237,21 @@ const CLAP_PARAM_IS_MODULATABLE_PER_KEY* = 1 shl 12
 const CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL* = 1 shl 13
 const CLAP_PARAM_IS_MODULATABLE_PER_PORT* = 1 shl 14
 const CLAP_PARAM_REQUIRES_PROCESS* = 1 shl 15
-const CLAP_EXT_PARAMS* = cstring"clap.params"
-const CLAP_EXT_STATE* = cstring"clap.state"
-
-const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
+const CLAP_NOTE_DIALECT_CLAP* = 1 shl 0
+const CLAP_NOTE_DIALECT_MIDI* = 1 shl 1
+const CLAP_NOTE_DIALECT_MIDI_MPE* = 1 shl 2
+const CLAP_NOTE_DIALECT_MIDI2* = 1 shl 3
+const CLAP_PROCESS_ERROR* = 0
+const CLAP_PROCESS_CONTINUE* = 1
+const CLAP_PROCESS_CONTINUE_IF_NOT_QUIET* = 2
+const CLAP_PROCESS_TAIL* = 3
+const CLAP_PROCESS_SLEEP* = 4
 const CLAP_PORT_MONO* = cstring"mono"
 const CLAP_PORT_STEREO* = cstring"stereo"
-
-const CLAP_EXT_TRACK_INFO* = cstring"clap.track-info.draft/1"
-
 const CLAP_INVALID_ID* = high(uint32).clap_id
-
 const CLAP_PLUGIN_FACTORY_ID* = cstring"clap.plugin-factory"
-
-template clap_version_is_compatible*(v: clap_version_t): bool = v.major >= 1
+const CLAP_EXT_PARAMS* = cstring"clap.params"
+const CLAP_EXT_STATE* = cstring"clap.state"
+const CLAP_EXT_TRACK_INFO* = cstring"clap.track-info.draft/1"
+const CLAP_EXT_NOTE_PORTS* = cstring"clap.note-ports"
+const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
