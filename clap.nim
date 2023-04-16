@@ -32,25 +32,39 @@ type
 method init*(plugin: Plugin) {.base.} = discard
 method processAudio*(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) {.base.} = discard
 
-proc parameter*(plugin: Plugin, i: int): float = plugin.parameterValueAudioThread[i]
+proc parameter*(plugin: Plugin, id: int): float = plugin.parameterValueAudioThread[id]
+proc parameter*(plugin: Plugin, id: enum): float = plugin.parameterValueAudioThread[id.int]
 proc addParameter*(plugin: Plugin,
+                   id: enum,
                    name: string,
-                   module: string,
                    minValue: float,
                    maxValue: float,
-                   defaultValue: float) =
-  plugin.parameterCount += 1
-  plugin.parameterInfo.add ParameterInfo(
+                   defaultValue: float,
+                   module = "") =
+  let idNumber = id.int
+  let idCount = idNumber + 1
+
+  if idCount > plugin.parameterCount:
+    plugin.parameterCount = idCount
+
+  if idCount > plugin.parameterInfo.len:
+    plugin.parameterInfo.setLen(idCount)
+    plugin.parameterValueMainThread.setLen(idCount)
+    plugin.parameterValueAudioThread.setLen(idCount)
+    plugin.parameterChangedMainThread.setLen(idCount)
+    plugin.parameterChangedAudioThread.setLen(idCount)
+
+  plugin.parameterInfo[idNumber] = ParameterInfo(
     name: name,
     module: module,
     minValue: minValue,
     maxValue: maxValue,
     defaultValue: defaultValue,
   )
-  plugin.parameterValueMainThread.add defaultValue
-  plugin.parameterValueAudioThread.add defaultValue
-  plugin.parameterChangedMainThread.add false
-  plugin.parameterChangedAudioThread.add false
+  plugin.parameterValueMainThread[idNumber] = defaultValue
+  plugin.parameterValueAudioThread[idNumber] = defaultValue
+  plugin.parameterChangedMainThread[idNumber] = false
+  plugin.parameterChangedAudioThread[idNumber] = false
 
 proc syncMainThreadToAudioThread*(plugin: Plugin, outputEvents: ptr clap_output_events_t) =
   acquire(plugin.parameterLock)
