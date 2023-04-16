@@ -8,6 +8,10 @@ template `[]`*(buffer: AudioBuffer, channel: auto): untyped =
   cast[ptr UncheckedArray[ptr UncheckedArray[cfloat]]](buffer.data32)[channel]
 
 type
+  PluginCreator = object
+    descriptor: clap_plugin_descriptor_t
+    createInstance: proc(): pointer
+
   ParameterInfo = object
     name*: string
     module*: string
@@ -15,9 +19,7 @@ type
     maxValue*: float
     defaultValue*: float
 
-  Plugin* = ref object
-    init*: proc(plugin: Plugin)
-    processAudio*: proc(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int)
+  Plugin* = ref object of RootObj
     sampleRate*: float
     parameterCount: int
     parameterInfo: seq[ParameterInfo]
@@ -26,17 +28,9 @@ type
     parameterChangedMainThread: seq[bool]
     parameterChangedAudioThread: seq[bool]
     parameterLock: Lock
-    descriptor: clap_plugin_descriptor_t
 
-proc `id=`*(plugin: Plugin, value: string) = plugin.descriptor.id = value.cstring
-proc `name=`*(plugin: Plugin, value: string) = plugin.descriptor.name = value.cstring
-proc `vendor=`*(plugin: Plugin, value: string) = plugin.descriptor.vendor = value.cstring
-proc `url=`*(plugin: Plugin, value: string) = plugin.descriptor.url = value.cstring
-proc `manualUrl=`*(plugin: Plugin, value: string) = plugin.descriptor.manualUrl = value.cstring
-proc `supportUrl=`*(plugin: Plugin, value: string) = plugin.descriptor.supportUrl = value.cstring
-proc `version=`*(plugin: Plugin, value: string) = plugin.descriptor.version = value.cstring
-proc `description=`*(plugin: Plugin, value: string) = plugin.descriptor.description = value.cstring
-# proc `features=`*(plugin: Plugin, value: openArray[string]) = plugin.descriptor.features = value.cstring
+method init*(plugin: Plugin) {.base.} = discard
+method processAudio*(plugin: Plugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) {.base.} = discard
 
 proc parameter*(plugin: Plugin, i: int): float = plugin.parameterValueAudioThread[i]
 proc addParameter*(plugin: Plugin,
@@ -58,7 +52,7 @@ proc addParameter*(plugin: Plugin,
   plugin.parameterChangedMainThread.add false
   plugin.parameterChangedAudioThread.add false
 
-proc syncMainThreadToAudioThread(plugin: Plugin, outputEvents: ptr clap_output_events_t) =
+proc syncMainThreadToAudioThread*(plugin: Plugin, outputEvents: ptr clap_output_events_t) =
   acquire(plugin.parameterLock)
 
   for i in 0 ..< plugin.parameterCount:
@@ -83,7 +77,7 @@ proc syncMainThreadToAudioThread(plugin: Plugin, outputEvents: ptr clap_output_e
 
   release(plugin.parameterLock)
 
-proc syncAudioThreadToMainThread(plugin: Plugin) =
+proc syncAudioThreadToMainThread*(plugin: Plugin) =
   acquire(plugin.parameterLock)
 
   for i in 0 ..< plugin.parameterCount:
@@ -93,18 +87,45 @@ proc syncAudioThreadToMainThread(plugin: Plugin) =
 
   release(plugin.parameterLock)
 
-var plugins*: seq[Plugin]
+var pluginCreators: seq[PluginCreator]
+
+proc addPlugin*(T: typedesc,
+                id: string,
+                name: string,
+                vendor = "",
+                url = "",
+                manualUrl = "",
+                supportUrl = "",
+                version = "",
+                description = "",
+                features: openArray[string] = []) =
+  pluginCreators.add PluginCreator(
+    descriptor: clap_plugin_descriptor_t(
+      id: id,
+      name: name,
+      vendor: vendor,
+      url: url,
+      manualUrl: manualUrl,
+      supportUrl: supportUrl,
+      version: version,
+      description: description,
+    ),
+    createInstance: proc(): pointer =
+      let instance = T()
+      GcRef(instance)
+      return cast[pointer](instance)
+  )
 
 proc plugin_init(plugin: ptr clap_plugin_t): bool {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
   initLock(p.parameterLock)
-  if p.init != nil:
-    p.init(p)
+  p.init()
   return true
 
 proc plugin_destroy(plugin: ptr clap_plugin_t) {.cdecl.} =
   let p = cast[Plugin](plugin.plugin_data)
   deinitLock(p.parameterLock)
+  GcUnref(p)
   dealloc(plugin)
 
 proc plugin_activate(plugin: ptr clap_plugin_t, sample_rate: cdouble, min_frames_count, max_frames_count: uint32): bool {.cdecl.} =
@@ -160,12 +181,11 @@ proc plugin_process(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
         nextEventIndex = frameCount
         break
 
-    if p.processAudio != nil:
-      p.processAudio(p,
-        cast[ptr UncheckedArray[AudioBuffer]](process.audio_inputs).toOpenArray(0, process.audio_inputs_count.int),
-        cast[ptr UncheckedArray[AudioBuffer]](process.audio_outputs).toOpenArray(0, process.audio_outputs_count.int),
-        frame.int, nextEventIndex.int,
-      )
+    p.processAudio(
+      cast[ptr UncheckedArray[AudioBuffer]](process.audio_inputs).toOpenArray(0, process.audio_inputs_count.int),
+      cast[ptr UncheckedArray[AudioBuffer]](process.audio_outputs).toOpenArray(0, process.audio_outputs_count.int),
+      frame.int, nextEventIndex.int,
+    )
 
     frame = nextEventIndex
 
@@ -290,20 +310,20 @@ proc plugin_on_main_thread(plugin: ptr clap_plugin_t) {.cdecl.} =
 
 var clapFactory = clap_plugin_factory_t(
   get_plugin_count: proc(factory: ptr clap_plugin_factory_t): uint32 {.cdecl.} =
-    return plugins.len.uint32
+    return pluginCreators.len.uint32
 
   , get_plugin_descriptor: proc(factory: ptr clap_plugin_factory_t, index: uint32): ptr clap_plugin_descriptor_t {.cdecl.} =
-    return plugins[index].descriptor.addr
+    return pluginCreators[index].descriptor.addr
 
   , create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
     if not clap_version_is_compatible(host.clap_version):
       return nil
 
-    for plugin in plugins:
-      if plugin_id == plugin.descriptor.id:
+    for i in 0 ..< pluginCreators.len:
+      if plugin_id == pluginCreators[i].descriptor.id:
         var clapPlugin = create(clap_plugin_t)
-        clapPlugin.plugin_data = cast[pointer](plugin)
-        clapPlugin.desc = plugin.descriptor.addr
+        clapPlugin.plugin_data = pluginCreators[i].createInstance()
+        clapPlugin.desc = pluginCreators[i].descriptor.addr
         clapPlugin.init = plugin_init
         clapPlugin.destroy = plugin_destroy
         clapPlugin.activate = plugin_activate
