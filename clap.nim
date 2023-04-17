@@ -1,6 +1,6 @@
 import std/locks; export locks
 import ./binding; export binding
-import nimgui/oswindow; export oswindow
+import oswindow; export oswindow
 
 template doIfCompiles*(code: untyped): untyped =
   when compiles(code):
@@ -169,11 +169,11 @@ proc syncAudioThreadToMainThread*(plugin: Plugin) =
 template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyped {.dirty.} =
   var paramsExtension = clap_plugin_params_t(
     count: proc(plugin: ptr clap_plugin_t): uint32 {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       return p.parameterCount.uint32
 
     , get_info: proc(plugin: ptr clap_plugin_t, param_index: uint32, param_info: ptr clap_param_info_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       let info = p.parameterInfo[param_index]
 
       zeroMem(param_info, sizeof(clap_param_info_t))
@@ -191,7 +191,7 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       return true
 
     , get_value: proc(plugin: ptr clap_plugin_t, param_id: clap_id, out_value: ptr cdouble): bool {.cdecl.} =
-        let p = cast[Plugin](plugin.plugin_data)
+        let p = cast[T](plugin.plugin_data)
 
         acquire(p.parameterLock)
 
@@ -220,7 +220,7 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       return false
 
     , flush: proc(plugin: ptr clap_plugin_t, `in`: ptr clap_input_events_t, `out`: ptr clap_output_events_t) {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       let eventCount = `in`.size(`in`)
 
       p.syncMainThreadToAudioThread(`out`)
@@ -241,14 +241,14 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
 
   var stateExtension = clap_plugin_state_t(
     save: proc(plugin: ptr clap_plugin_t, stream: ptr clap_ostream_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
 
       p.syncAudioThreadToMainThread()
 
       return sizeof(float) * p.parameterCount == stream.write(stream, p.parameterValueMainThread[0].addr, (sizeof(float) * p.parameterCount).uint64)
 
     , load: proc(plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
 
       acquire(p.parameterLock)
 
@@ -299,37 +299,50 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
     , create: proc(plugin: ptr clap_plugin_t, api: cstring, is_floating: bool): bool {.cdecl.} =
       if not (api == CLAP_WINDOW_API and not is_floating):
         return false
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       p.window = newOsWindow()
+      p.window.setDecorated(false)
+      doIfCompiles:
+        p.createGui()
       return true
 
     , destroy: proc(plugin: ptr clap_plugin_t) {.cdecl.} =
-      discard
+      let p = cast[T](plugin.plugin_data)
+      p.window.close()
+      doIfCompiles:
+        p.destroyGui()
 
     , set_scale: proc(plugin: ptr clap_plugin_t, scale: cdouble): bool {.cdecl.} =
       return false
 
     , get_size: proc(plugin: ptr clap_plugin_t, width, height: ptr uint32): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
-      width[] = p.window.width.uint32
-      height[] = p.window.height.uint32
+      let p = cast[T](plugin.plugin_data)
+      width[] = p.window.widthPixels.uint32
+      height[] = p.window.heightPixels.uint32
       return true
 
     , can_resize: proc(plugin: ptr clap_plugin_t): bool {.cdecl.} =
-      return false
+      return true
 
     , get_resize_hints: proc(plugin: ptr clap_plugin_t, hints: ptr clap_gui_resize_hints_t): bool {.cdecl.} =
-      return false
+      hints.can_resize_horizontally = true
+      hints.can_resize_vertically = true
+      hints.preserve_aspect_ratio = false
+      return true
 
     , adjust_size: proc(plugin: ptr clap_plugin_t, width, height: ptr uint32): bool {.cdecl.} =
       return true
 
     , set_size: proc(plugin: ptr clap_plugin_t, width, height: uint32): bool {.cdecl.} =
+      let p = cast[T](plugin.plugin_data)
+      p.window.setPosition(0, 0)
+      p.window.setSize(width.int, height.int)
       return true
 
     , set_parent: proc(plugin: ptr clap_plugin_t, window: ptr clap_window_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
-      p.window.parent = cast[pointer](window.union.win32)
+      let p = cast[T](plugin.plugin_data)
+      p.window.embedInsideWindow(cast[pointer](window.union.win32))
+      p.window.setPosition(0, 0)
       return true
 
     , set_transient: proc(plugin: ptr clap_plugin_t, window: ptr clap_window_t): bool {.cdecl.} =
@@ -339,12 +352,12 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       discard
 
     , show: proc(plugin: ptr clap_plugin_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       p.window.show()
       return true
 
     , hide: proc(plugin: ptr clap_plugin_t): bool {.cdecl.} =
-      let p = cast[Plugin](plugin.plugin_data)
+      let p = cast[T](plugin.plugin_data)
       p.window.hide()
       return true
   )
