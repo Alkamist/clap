@@ -58,6 +58,44 @@ type
     save*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_ostream_t): bool {.cdecl.}
     load*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cdecl.}
 
+  clap_gui_resize_hints_t* {.bycopy.} = object
+    can_resize_horizontally*: bool
+    can_resize_vertically*: bool
+    preserve_aspect_ratio*: bool
+    aspect_ratio_width*: uint32
+    aspect_ratio_height*: uint32
+
+  clap_hwnd* = pointer
+  clap_nsview* = pointer
+  clap_xwnd* = culong
+
+  clap_window_union* {.bycopy, union.} = object
+    cocoa*: clap_nsview
+    x11*: clap_xwnd
+    win32*: clap_hwnd
+    `ptr`*: pointer
+
+  clap_window_t* {.bycopy.} = object
+    api*: cstring
+    union*: clap_window_union
+
+  clap_plugin_gui_t* {.bycopy.} = object
+    is_api_supported*: proc(plugin: ptr clap_plugin_t, api: cstring, is_floating: bool): bool {.cdecl.}
+    get_preferred_api*: proc(plugin: ptr clap_plugin_t, api: ptr cstring, is_floating: ptr bool): bool {.cdecl.}
+    create*: proc(plugin: ptr clap_plugin_t, api: cstring, is_floating: bool): bool {.cdecl.}
+    destroy*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
+    set_scale*: proc(plugin: ptr clap_plugin_t, scale: cdouble): bool {.cdecl.}
+    get_size*: proc(plugin: ptr clap_plugin_t, width, height: ptr uint32): bool {.cdecl.}
+    can_resize*: proc(plugin: ptr clap_plugin_t): bool {.cdecl.}
+    get_resize_hints*: proc(plugin: ptr clap_plugin_t, hints: ptr clap_gui_resize_hints_t): bool {.cdecl.}
+    adjust_size*: proc(plugin: ptr clap_plugin_t, width, height: ptr uint32): bool {.cdecl.}
+    set_size*: proc(plugin: ptr clap_plugin_t, width, height: uint32): bool {.cdecl.}
+    set_parent*: proc(plugin: ptr clap_plugin_t, window: ptr clap_window_t): bool {.cdecl.}
+    set_transient*: proc(plugin: ptr clap_plugin_t, window: ptr clap_window_t): bool {.cdecl.}
+    suggest_title*: proc(plugin: ptr clap_plugin_t, title: cstring) {.cdecl.}
+    show*: proc(plugin: ptr clap_plugin_t): bool {.cdecl.}
+    hide*: proc(plugin: ptr clap_plugin_t): bool {.cdecl.}
+
   clap_event_header_t* {.bycopy.} = object
    size*: uint32
    time*: uint32
@@ -255,3 +293,9 @@ const CLAP_EXT_STATE* = cstring"clap.state"
 const CLAP_EXT_TRACK_INFO* = cstring"clap.track-info.draft/1"
 const CLAP_EXT_NOTE_PORTS* = cstring"clap.note-ports"
 const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
+const CLAP_EXT_GUI* = cstring"clap.gui"
+
+const CLAP_WINDOW_API_WIN32* = cstring"win32"
+const CLAP_WINDOW_API_COCOA* = cstring"cocoa"
+const CLAP_WINDOW_API_X11* = cstring"x11"
+const CLAP_WINDOW_API_WAYLAND* = cstring"wayland"
