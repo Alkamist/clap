@@ -69,6 +69,8 @@ type
     parameterChangedMainThread: seq[bool]
     parameterChangedAudioThread: seq[bool]
     parameterLock: Lock
+    host: ptr clap_host_t
+    windowTimerId: clap_id
 
 when defined(windows):
   const CLAP_WINDOW_API* = CLAP_WINDOW_API_WIN32
@@ -165,6 +167,12 @@ proc syncAudioThreadToMainThread*(plugin: Plugin) =
       plugin.parameterChangedAudioThread[i] = false
 
   release(plugin.parameterLock)
+
+proc registerTimer*(plugin: Plugin, period: uint32, id: var clap_id) =
+  discard cast[ptr clap_host_timer_support_t](plugin.host.get_extension(plugin.host, CLAP_EXT_TIMER_SUPPORT)).register_timer(plugin.host, period, id.addr)
+
+proc unregisterTimer*(plugin: Plugin, id: clap_id) =
+  discard cast[ptr clap_host_timer_support_t](plugin.host.get_extension(plugin.host, CLAP_EXT_TIMER_SUPPORT)).unregister_timer(plugin.host, id)
 
 template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyped {.dirty.} =
   var paramsExtension = clap_plugin_params_t(
@@ -287,6 +295,13 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       return true
   )
 
+  var timerExtension = clap_plugin_timer_support_t(
+    on_timer: proc(plugin: ptr clap_plugin_t, timer_id: clap_id) {.cdecl.} =
+      let p = cast[T](plugin.plugin_data)
+      if timer_id == p.windowTimerId:
+        p.window.process()
+  )
+
   var guiExtension = clap_plugin_gui_t(
     is_api_supported: proc(plugin: ptr clap_plugin_t, api: cstring, is_floating: bool): bool {.cdecl.} =
       return api == CLAP_WINDOW_API and not is_floating
@@ -302,12 +317,16 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       let p = cast[T](plugin.plugin_data)
       p.window = newOsWindow()
       p.window.setDecorated(false)
+      p.window.setPosition(0, 0)
+      p.window.setSize(p.window.widthPixels, p.window.heightPixels)
       doIfCompiles:
         p.createGui()
+      p.registerTimer(0, p.windowTimerId)
       return true
 
     , destroy: proc(plugin: ptr clap_plugin_t) {.cdecl.} =
       let p = cast[T](plugin.plugin_data)
+      p.unregisterTimer(p.windowTimerId)
       p.window.close()
       doIfCompiles:
         p.destroyGui()
@@ -343,6 +362,7 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
       let p = cast[T](plugin.plugin_data)
       p.window.embedInsideWindow(cast[pointer](window.union.win32))
       p.window.setPosition(0, 0)
+      p.window.setSize(p.window.widthPixels, p.window.heightPixels)
       return true
 
     , set_transient: proc(plugin: ptr clap_plugin_t, window: ptr clap_window_t): bool {.cdecl.} =
@@ -481,6 +501,7 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
 
   proc plugin_get_extension(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.} =
     if id == CLAP_EXT_GUI: return guiExtension.addr
+    if id == CLAP_EXT_TIMER_SUPPORT: return timerExtension.addr
     if id == CLAP_EXT_AUDIO_PORTS: return audioPortsExtension.addr
     if id == CLAP_EXT_PARAMS: return paramsExtension.addr
     if id == CLAP_EXT_STATE: return stateExtension.addr
@@ -509,6 +530,7 @@ template exportPlugin*(T: typedesc, descriptor: clap_plugin_descriptor_t): untyp
         var clapPlugin = create(clap_plugin_t)
         let instance = T()
         GcRef(instance)
+        instance.host = host
         clapPlugin.plugin_data = cast[pointer](instance)
         clapPlugin.desc = descriptor.addr
         clapPlugin.init = plugin_init

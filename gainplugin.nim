@@ -4,6 +4,8 @@ import nimgui/imploswindow
 
 const consolaData = staticRead("consola.ttf")
 
+var debugOutput = ""
+
 type
   GainPluginParameter* = enum
     Gain
@@ -35,6 +37,13 @@ proc createGui*(plugin: GainPlugin) =
   window1.size = vec2(500, 500)
   window1.addTitle("Window 1")
 
+  let txt = window1.body.addText()
+  txt.dontClip = true
+  txt.passInput = true
+  txt.updateHook:
+    self.size = window1.size
+    self.data = debugOutput
+
   let p = plugin
   plugin.window.onFrame = proc() =
     implOsWindow(p.gui, p.window)
@@ -42,8 +51,8 @@ proc createGui*(plugin: GainPlugin) =
 proc destroyGui*(plugin: GainPlugin) =
   plugin.gui = nil
 
-# proc processNote*(plugin: GainPlugin, note: Note) =
-#   ShowConsoleMsg(cstring"Yee")
+proc processNote*(plugin: GainPlugin, note: Note) =
+  debugOutput = $note
 
 proc processAudio*(plugin: GainPlugin, inputs, outputs: openArray[AudioBuffer], startFrame, endFrame: int) =
   for c in 0 ..< outputs[0].channelCount:

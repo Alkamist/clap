@@ -58,6 +58,13 @@ type
     save*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_ostream_t): bool {.cdecl.}
     load*: proc(plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cdecl.}
 
+  clap_plugin_timer_support_t* {.bycopy.} = object
+    on_timer*: proc(plugin: ptr clap_plugin_t, timer_id: clap_id) {.cdecl.}
+
+  clap_host_timer_support_t* {.bycopy.} = object
+    register_timer*: proc(host: ptr clap_host_t, period_ms: uint32, timer_id: ptr clap_id): bool {.cdecl.}
+    unregister_timer*: proc(host: ptr clap_host_t, timer_id: clap_id): bool {.cdecl.}
+
   clap_gui_resize_hints_t* {.bycopy.} = object
     can_resize_horizontally*: bool
     can_resize_vertically*: bool
@@ -293,6 +300,7 @@ const CLAP_EXT_STATE* = cstring"clap.state"
 const CLAP_EXT_TRACK_INFO* = cstring"clap.track-info.draft/1"
 const CLAP_EXT_NOTE_PORTS* = cstring"clap.note-ports"
 const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
+const CLAP_EXT_TIMER_SUPPORT* = cstring"clap.timer-support"
 const CLAP_EXT_GUI* = cstring"clap.gui"
 
 const CLAP_WINDOW_API_WIN32* = cstring"win32"
