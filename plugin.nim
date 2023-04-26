@@ -21,9 +21,12 @@ var descriptor* = clap.PluginDescriptor(
 proc init(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
   plugin.csCorrector = CsCorrector()
+  cscorrector.print = userplugin.print
   plugin.registerTimer("DebugPrint", 0, proc() =
-    reaper.showConsoleMsg(cstring(debugString))
-    debugString = ""
+    if debugStringChanged:
+      reaper.showConsoleMsg(cstring(debugString & "\n"))
+      debugString = ""
+      debugStringChanged = false
   )
   return true
 

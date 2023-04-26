@@ -2,6 +2,7 @@ import std/tables; export tables
 import clap
 import cscorrector
 
+var debugStringChanged* = false
 var debugString* = ""
 
 type
@@ -21,7 +22,6 @@ proc millisToSamples*(plugin: UserPlugin, millis: float): int =
 proc getUserPlugin*(clapPlugin: ptr clap.Plugin): UserPlugin =
   cast[UserPlugin](clapPlugin.pluginData)
 
-proc print*(x: varargs[string, `$`]) =
-  for msg in x:
-    debugString = debugString & msg
-  debugString = debugString & "\n"
+proc print*(x: string) =
+  debugString = debugString & x
+  debugStringChanged = true
