@@ -8,6 +8,18 @@ const extNotePorts* = cstring"clap.note-ports"
 const extLatency* = cstring"clap.latency"
 const extParams* = cstring"clap.params"
 const extTimerSupport* = cstring"clap.timer-support"
+const extGui* = cstring"clap.gui"
+
+const windowApiWin32* = cstring"win32"
+const windowApiCocoa* = cstring"cocoa"
+const windowApiX11* = cstring"x11"
+const windowApiWayland* = cstring"wayland"
+when defined(windows):
+  const windowApi* = windowApiWin32
+elif defined(macosx):
+  const windowApi* = windowApiCocoa
+elif defined(linux):
+  const windowApi* = windowApiX11
 
 type
   Id* = uint32
@@ -159,6 +171,44 @@ type
     valueToText*: proc(plugin: ptr Plugin, paramId: Id, value: float64, outBuffer: ptr UncheckedArray[uint8], outBufferCapacity: uint32): bool {.cdecl.}
     textToValue*: proc(plugin: ptr Plugin, paramId: Id, paramValueText: cstring, outValue: ptr float64): bool {.cdecl.}
     flush*: proc(plugin: ptr Plugin, input: ptr InputEvents, output: ptr OutputEvents) {.cdecl.}
+
+  GuiResizeHints* {.bycopy.} = object
+    canResizeHorizontally*: bool
+    canResizeVertically*: bool
+    preserveAspectRatio*: bool
+    aspectRatioWidth*: uint32
+    aspectRatioHeight*: uint32
+
+  Hwnd* = pointer
+  Nsview* = pointer
+  Xwnd* = culong
+
+  WindowUnion* {.bycopy, union.} = object
+    cocoa*: Nsview
+    x11*: Xwnd
+    win32*: Hwnd
+    `ptr`*: pointer
+
+  Window* {.bycopy.} = object
+    api*: cstring
+    union*: WindowUnion
+
+  PluginGui* {.bycopy.} = object
+    isApiSupported*: proc(plugin: ptr Plugin, api: cstring, isFloating: bool): bool {.cdecl.}
+    getPreferredApi*: proc(plugin: ptr Plugin, api: ptr cstring, isFloating: ptr bool): bool {.cdecl.}
+    create*: proc(plugin: ptr Plugin, api: cstring, isFloating: bool): bool {.cdecl.}
+    destroy*: proc(plugin: ptr Plugin) {.cdecl.}
+    setScale*: proc(plugin: ptr Plugin, scale: float64): bool {.cdecl.}
+    getSize*: proc(plugin: ptr Plugin, width, height: ptr uint32): bool {.cdecl.}
+    canResize*: proc(plugin: ptr Plugin): bool {.cdecl.}
+    getResizeHints*: proc(plugin: ptr Plugin, hints: ptr GuiResizeHints): bool {.cdecl.}
+    adjustSize*: proc(plugin: ptr Plugin, width, height: ptr uint32): bool {.cdecl.}
+    setSize*: proc(plugin: ptr Plugin, width, height: uint32): bool {.cdecl.}
+    setParent*: proc(plugin: ptr Plugin, window: ptr Window): bool {.cdecl.}
+    setTransient*: proc(plugin: ptr Plugin, window: ptr Window): bool {.cdecl.}
+    suggestTitle*: proc(plugin: ptr Plugin, title: cstring) {.cdecl.}
+    show*: proc(plugin: ptr Plugin): bool {.cdecl.}
+    hide*: proc(plugin: ptr Plugin): bool {.cdecl.}
 
   PluginDescriptor* {.bycopy.} = object
     clapVersion*: Version

@@ -3,7 +3,7 @@
 import clap
 import userplugin
 import extensions
-import reaper
+# import reaper
 import cscorrector
 
 var descriptor* = clap.PluginDescriptor(
@@ -22,17 +22,17 @@ proc init(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
   plugin.csCorrector = CsCorrector()
   cscorrector.print = userplugin.print
-  plugin.registerTimer("DebugPrint", 0, proc() =
-    if debugStringChanged:
-      reaper.showConsoleMsg(cstring(debugString & "\n"))
-      debugString = ""
-      debugStringChanged = false
-  )
+  # plugin.registerTimer("DebugPrint", 0, proc() =
+  #   if debugStringChanged:
+  #     reaper.showConsoleMsg(cstring(debugString))
+  #     debugString = ""
+  #     debugStringChanged = false
+  # )
   return true
 
 proc destroy(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
-  plugin.unregisterTimer("DebugPrint")
+  # plugin.unregisterTimer("DebugPrint")
   GcUnref(plugin)
 
 proc activate(clapPlugin: ptr clap.Plugin, sampleRate: float64, minFramesCount, maxFramesCount: uint32): bool {.cdecl.} =
@@ -47,7 +47,8 @@ proc activate(clapPlugin: ptr clap.Plugin, sampleRate: float64, minFramesCount, 
   return true
 
 proc deactivate(clapPlugin: ptr clap.Plugin) {.cdecl.} =
-  discard
+  let plugin = clapPlugin.getUserPlugin()
+  plugin.csCorrector.reset()
 
 proc startProcessing(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
   return true
@@ -56,7 +57,8 @@ proc stopProcessing(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   discard
 
 proc reset(clapPlugin: ptr clap.Plugin) {.cdecl.} =
-  discard
+  let plugin = clapPlugin.getUserPlugin()
+  plugin.csCorrector.reset()
 
 proc process(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): clap.ProcessStatus {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
@@ -112,6 +114,7 @@ proc process(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): clap.P
   return clap.Continue
 
 proc getExtension(clapPlugin: ptr clap.Plugin, id: cstring): pointer {.cdecl.} =
+  if id == clap.extGui: return extensions.gui.extension.addr
   if id == clap.extLatency: return extensions.latency.extension.addr
   if id == clap.extNotePorts: return extensions.noteports.extension.addr
   # if id == clap.extParams: return extensions.parameters.extension.addr

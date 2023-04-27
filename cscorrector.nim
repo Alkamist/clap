@@ -1,5 +1,7 @@
+import std/strformat
 import std/options
 import std/algorithm
+import std/sequtils
 import midi
 
 var print*: proc(x: string)
@@ -7,16 +9,16 @@ var print*: proc(x: string)
 type
   Note* = ref object
     on*: Event
-    off*: Event
+    off*: Option[Event]
 
   Event* = ref object
     time*: int
     data*: midi.Message
+    isSent*: bool
 
   CsCorrector* = ref object
-    events*: seq[Event]
+    otherEvents*: seq[Event]
     notes*: array[128, seq[Note]]
-    currentNote*: Note
     heldKey*: Option[uint8]
     legatoDelayFirst*: int # Freshly pressed key
     legatoDelayLevel0*: int # Lowest velocity legato
@@ -24,101 +26,155 @@ type
     legatoDelayLevel2*: int
     legatoDelayLevel3*: int # Highest velocity legato
 
+proc `$`*(event: Event): string =
+  if event == nil:
+    "Event(nil)"
+  else:
+    &"Event(kind: {event.data.kind}, time: {event.time}, isSent: {event.isSent})"
+
+proc `$`*(note: Note): string =
+  if note.off.isSome:
+    &"Note(on: {$note.on}, off: {$note.off.get})"
+  else:
+    &"Note(on: {$note.on}, off: None)"
+
+proc isSent*(note: Note): bool =
+  note.off.isSome and note.off.get.isSent
+
+# proc requiredLatency*(cs: CsCorrector): int =
+#   return -min(min(min(min(min(
+#     0,
+#     cs.legatoDelayFirst),
+#     cs.legatoDelayLevel0),
+#     cs.legatoDelayLevel1),
+#     cs.legatoDelayLevel2),
+#     cs.legatoDelayLevel3,
+#   )
+
 proc requiredLatency*(cs: CsCorrector): int =
-  return -min(min(min(min(min(
-    0,
-    cs.legatoDelayFirst),
-    cs.legatoDelayLevel0),
-    cs.legatoDelayLevel1),
-    cs.legatoDelayLevel2),
-    cs.legatoDelayLevel3,
-  )
+  return 48000
 
-# proc printNotes(cs: CsCorrector, key: uint8) =
-#   var output = ""
-#   for note in cs.notes[key]:
-#     output = output & $note[]
-#   print(output)
+proc startNote(cs: CsCorrector, noteOn: Event) =
+  let key = noteOn.data.key
 
-# proc printEvents(cs: CsCorrector) =
-#   var output = ""
-#   for event in cs.events:
-#     output = output & $event[]
-#   print(output)
+  var delay = 0
+  if cs.heldKey.isSome:
+    delay = cs.legatoDelayLevel0
+  else:
+    delay = cs.legatoDelayFirst
+
+  cs.heldKey = some(key)
+
+  noteOn.time += cs.requiredLatency + delay
+  var insertIndex = 0
+  for i, note in cs.notes[key]:
+    if noteOn.time > note.on.time:
+      insertIndex = i
+  cs.notes[key].insert(Note(on: noteOn, off: none(Event)), insertIndex)
+  # cs.notes[key].add(Note(on: noteOn, off: none(Event)))
+
+proc finishNote(cs: CsCorrector, noteOff: Event) =
+  let key = noteOff.data.key
+
+  if cs.heldKey.isSome and key == cs.heldKey.get:
+    cs.heldKey = none(uint8)
+
+  noteOff.time += cs.requiredLatency
+
+  for note in cs.notes[key]:
+    if note.off.isNone:
+      note.off = some(noteOff)
+
+proc reset*(cs: CsCorrector) =
+  cs.otherEvents.setLen(0)
+  for key in 0 ..< 128:
+    cs.notes[key].setLen(0)
 
 proc processEvent*(cs: CsCorrector, event: Event) =
-  var delay = 0
-
+  if event == nil:
+    return
   case event.data.kind:
   of NoteOff:
-      let key = event.data.key
-
-      if cs.heldKey.isSome and key == cs.heldKey.get:
-        cs.heldKey = none(uint8)
-
-      if cs.currentNote != nil:
-        cs.currentNote.off = event
-        cs.currentNote = nil
-
-      # cs.printEvents()
-
+    cs.finishNote(event)
   of NoteOn:
-      let key = event.data.key
-
-      if cs.heldKey.isSome:
-        delay = cs.legatoDelayLevel0
-      else:
-        delay = cs.legatoDelayFirst
-
-      cs.heldKey = some(key)
-
-      cs.currentNote = Note(on: event)
-      cs.notes[key].add(cs.currentNote)
-
-      # cs.printEvents()
-
+    cs.startNote(event)
   else:
-    discard
+    event.time += cs.requiredLatency
+    cs.otherEvents.add(event)
 
-  event.time += cs.requiredLatency + delay
-  if event.time < 0:
-    event.time = 0
-
-  cs.events.add(event)
-
-proc sortEventsByTime(cs: CsCorrector) =
-  cs.events.sort do (x, y: Event) -> int:
+proc getSortedEvents(cs: CsCorrector): seq[Event] =
+  for event in cs.otherEvents:
+    result.add(event)
+  for key in 0 ..< 128:
+    for note in cs.notes[key]:
+      if not note.on.isSent:
+        result.add(note.on)
+      if note.off.isSome and not note.off.get.isSent:
+        result.add(note.off.get)
+  result.sort do (x, y: Event) -> int:
     cmp(x.time, y.time)
 
-proc stillHasEvent(cs: CsCorrector, event: Event): bool =
-  if event == nil:
-    return false
-  for bufferEvent in cs.events:
-    if event == bufferEvent:
-      return true
+proc removeSentEvents(cs: CsCorrector) =
+  cs.otherEvents.keepItIf(not it.isSent)
+  for key in 0 ..< 128:
+    cs.notes[key].keepItIf(not it.isSent)
 
-proc removeInactiveNotes(cs: CsCorrector) =
-  for key, keyNotes in cs.notes:
-    var keepNotes: seq[Note]
-    for note in keyNotes:
-      if cs.stillHasEvent(note.off):
-        keepNotes.add(note)
-    cs.notes[key] = keepNotes
+proc decreaseEventTimes(cs: CsCorrector, frameCount: int) =
+  for event in cs.otherEvents:
+    event.time -= frameCount
+  for key in 0 ..< 128:
+    for note in cs.notes[key]:
+      note.on.time -= frameCount
+      if note.off.isSome:
+        note.off.get.time -= frameCount
+
+# proc fixNoteOverlaps(cs: CsCorrector, note: Note) =
+#   if note.off.isNone:
+#     return
+
+#   let key = note.on.data.key
+#   cs.notes[key].sort do (x, y: Note) -> int:
+#     cmp(x.on.time, y.on.time)
+
+#   for bufferNote in cs.notes[key]:
+#     if note == bufferNote:
+#       continue
+#     if note.off.get.time > bufferNote.on.time:
+#       note.off.get.time = bufferNote.on.time
+
+  # if note.off.get.time < note.on.time:
+  #   note.off.get.time = note.on.time
 
 proc pushEvents*(cs: CsCorrector, frameCount: int, pushProc: proc(event: Event)) =
-  cs.sortEventsByTime()
-
-  var keepEvents: seq[Event]
-
-  for event in cs.events:
+  let sortedEvents = cs.getSortedEvents()
+  for event in sortedEvents:
     if event.time < frameCount:
-      pushProc(event)
+      if not event.isSent:
+        event.isSent = true
+        pushProc(event)
     else:
-      keepEvents.add(event)
+      break
 
-  cs.events = keepEvents
+  cs.removeSentEvents()
 
-  cs.removeInactiveNotes()
+  # for key in 0 ..< 128:
+  #   # cs.notes[key].sort do (x, y: Note) -> int:
+  #   #   cmp(x.on.time, y.on.time)
+  #   for i in 1 ..< cs.notes[key].len:
+  #     let prevNote = cs.notes[key][i - 1]
+  #     let note = cs.notes[key][i]
+  #     if prevNote.off.get.time > note.on.time:
+        # prevNote.off.get.time = note.on.time
 
-  for event in cs.events:
-    event.time -= frameCount
+  # for key in 0 ..< 128:
+  #   for note in cs.notes[key]:
+  #     cs.fixNoteOverlaps(note)
+
+  cs.decreaseEventTimes(frameCount)
+
+  # for event in cs.otherEvents:
+  #   print($event)
+
+  for key in 0 ..< 128:
+    for note in cs.notes[key]:
+      print($note)

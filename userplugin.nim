@@ -1,12 +1,16 @@
 import std/tables; export tables
 import clap
 import cscorrector
+import nimgui; export nimgui
+import oswindow; export oswindow
 
 var debugStringChanged* = false
 var debugString* = ""
 
 type
   UserPlugin* = ref object
+    gui*: Gui
+    window*: OsWindow
     csCorrector*: CsCorrector
     clapHost*: ptr clap.Host
     clapPlugin*: clap.Plugin
@@ -23,5 +27,5 @@ proc getUserPlugin*(clapPlugin: ptr clap.Plugin): UserPlugin =
   cast[UserPlugin](clapPlugin.pluginData)
 
 proc print*(x: string) =
-  debugString = debugString & x
+  debugString = debugString & x & "\n"
   debugStringChanged = true

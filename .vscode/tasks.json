@@ -8,6 +8,7 @@
             "c",
             "-d:release",
             //"--nimcache:cache",
+            //"--threads:on",
             "--app:lib",
             "--gc:arc",
             "--noMain",
