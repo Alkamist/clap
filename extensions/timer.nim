@@ -4,7 +4,7 @@ import ../userplugin
 proc getHostTimerSupport(plugin: UserPlugin): ptr clap.HostTimerSupport =
   cast[ptr clap.HostTimerSupport](plugin.clapHost.getExtension(plugin.clapHost, clap.extTimerSupport))
 
-proc registerTimer*(plugin: UserPlugin, name: string, periodMs: int, timerProc: proc()) =
+proc registerTimer*(plugin: UserPlugin, name: string, periodMs: int, timerProc: proc(plugin: UserPlugin)) =
   var id: clap.Id
   let hostTimerSupport = plugin.getHostTimerSupport()
   discard hostTimerSupport.registerTimer(plugin.clapHost, uint32(periodMs), id.addr)
@@ -22,5 +22,5 @@ var extension* = clap.PluginTimerSupport(
   onTimer: proc(clapPlugin: ptr clap.Plugin, timerId: clap.Id) {.cdecl.} =
     let plugin = clapPlugin.getUserPlugin()
     if plugin.timerIdToProcTable.hasKey(timerId):
-      plugin.timerIdToProcTable[timerId]()
+      plugin.timerIdToProcTable[timerId](plugin)
 )

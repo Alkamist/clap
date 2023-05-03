@@ -1,23 +1,32 @@
 {.experimental: "overloadableEnums".}
 
-import nimgui/imploswindow
+import opengl as gl
 import ./timer
 import ../clap
 import ../userplugin
+# import ../cscorrector
 
 const consolaData = staticRead("consola.ttf")
 
-proc makeGui*(plugin: UserPlugin) =
-  let gui = plugin.gui
-  let text = gui.addText()
-  text.alignX = Center
-  text.alignY = Baseline
-  text.updateHook:
-    self.size = self.gui.size
-    if debugStringChanged:
-      self.data = debugString
-      debugString = ""
-      debugStringChanged = false
+proc onFrame(plugin: UserPlugin) =
+  let vg = plugin.vg
+  # vg.beginPath()
+  # vg.rect(50, 50, 200, 200)
+  # vg.setFillColor(0, 1, 0, 1)
+  # vg.fill()
+  vg.drawText(50, 50, "Ayy lmao")
+
+proc processFrame(plugin: UserPlugin) =
+  plugin.window.makeContextCurrent()
+  glClearColor(0.1, 0.1, 0.1, 1.0)
+  glClear(GL_COLOR_BUFFER_BIT)
+  let vg = plugin.vg
+  let (width, height) = plugin.window.size
+  let pixelDensity = plugin.window.dpi / 96.0
+  vg.beginFrame(width, height, pixelDensity)
+  onFrame(plugin)
+  vg.endFrame(width, height)
+  plugin.window.swapBuffers()
 
 var extension* = clap.PluginGui(
   isApiSupported: proc(clapPlugin: ptr clap.Plugin, api: cstring, isFloating: bool): bool {.cdecl.} =
@@ -33,24 +42,47 @@ var extension* = clap.PluginGui(
       return false
 
     let plugin = clapPlugin.getUserPlugin()
-
-    plugin.window = newOsWindow()
+    plugin.window = OsWindow.new()
+    plugin.window.makeContextCurrent()
     plugin.window.setDecorated(false)
     plugin.window.setPosition(0, 0)
-    plugin.window.setSize(plugin.window.widthPixels, plugin.window.heightPixels)
-    plugin.gui = newGui()
-    plugin.gui.backgroundColor = rgb(49, 51, 56)
-    plugin.gui.gfx.addFont("consola", consolaData)
-    plugin.makeGui()
+    plugin.window.userData = cast[pointer](plugin)
 
-    let gui = plugin.gui
-    let window = plugin.window
-    plugin.window.onFrame = proc() =
-      implOsWindow(gui, window)
+    gl.loadExtensions()
+    let (width, height) = plugin.window.size
+    glViewport(0, 0, int32(width), int32(height))
 
-    plugin.registerTimer("Gui", 0, proc() =
-      window.process()
+    if plugin.vg == nil:
+      plugin.vg = VectorGraphics.new()
+      plugin.vg.addFont("Consola", consolaData)
+
+    plugin.registerTimer("Gui", 0, proc(plugin: UserPlugin) =
+      processFrame(plugin)
     )
+    plugin.window.onClose = proc(window: OsWindow) =
+      let plugin = cast[UserPlugin](window.userData)
+      window.makeContextCurrent()
+      if plugin.vg != nil:
+        plugin.vg = nil
+    plugin.window.onResize = proc(window: OsWindow, width, height: int) =
+      glViewport(0, 0, int32(width), int32(height))
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMouseMove = proc(window: OsWindow, x, y: int) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMousePress = proc(window: OsWindow, button: MouseButton, x, y: int) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMouseRelease = proc(window: OsWindow, button: MouseButton, x, y: int) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMouseWheel = proc(window: OsWindow, x, y: float) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMouseEnter = proc(window: OsWindow, x, y: int) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onMouseExit = proc(window: OsWindow, x, y: int) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onKeyPress = proc(window: OsWindow, key: KeyboardKey) =
+      processFrame(cast[UserPlugin](window.userData))
+    plugin.window.onKeyRelease = proc(window: OsWindow, key: KeyboardKey) =
+      processFrame(cast[UserPlugin](window.userData))
 
     return true
   ,
@@ -58,15 +90,15 @@ var extension* = clap.PluginGui(
     let plugin = clapPlugin.getUserPlugin()
     plugin.unregisterTimer("Gui")
     plugin.window.close()
-    plugin.gui = nil
   ,
   setScale: proc(clapPlugin: ptr clap.Plugin, scale: float64): bool {.cdecl.} =
     return false
   ,
   getSize: proc(clapPlugin: ptr clap.Plugin, width, height: ptr uint32): bool {.cdecl.} =
     let plugin = clapPlugin.getUserPlugin()
-    width[] = uint32(plugin.window.widthPixels)
-    height[] = uint32(plugin.window.heightPixels)
+    let (w, h) = plugin.window.size()
+    width[] = uint32(w)
+    height[] = uint32(h)
     return true
   ,
   canResize: proc(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
@@ -84,14 +116,13 @@ var extension* = clap.PluginGui(
   setSize: proc(clapPlugin: ptr clap.Plugin, width, height: uint32): bool {.cdecl.} =
     let plugin = clapPlugin.getUserPlugin()
     plugin.window.setPosition(0, 0)
-    plugin.window.setSize(width.int, height.int)
+    plugin.window.setSize(int(width), int(height))
     return true
   ,
   setParent: proc(clapPlugin: ptr clap.Plugin, window: ptr clap.Window): bool {.cdecl.} =
     let plugin = clapPlugin.getUserPlugin()
     plugin.window.embedInsideWindow(cast[pointer](window.union.win32))
     plugin.window.setPosition(0, 0)
-    plugin.window.setSize(plugin.window.widthPixels, plugin.window.heightPixels)
     return true
   ,
   setTransient: proc(clapPlugin: ptr clap.Plugin, window: ptr clap.Window): bool {.cdecl.} =

@@ -2,7 +2,18 @@
 
 import clap
 import plugin
-import reaper
+# import reaper
+
+# var errorHappened = false
+
+# globalRaiseHook = proc(e: ref Exception): bool {.gcsafe, locks: 0.} =
+#   if not errorHappened:
+#     discard reaper.showMessageBox(
+#       msg = cstring(e.msg & "\n\n" & "Stack Trace:\n\n" & e.getStackTrace()),
+#       title = "CS Corrector Error:",
+#       `type` = 0, # Ok
+#     )
+#     errorHappened = true
 
 var clapFactory = clap.PluginFactory(
   getPluginCount: proc(factory: ptr clap.PluginFactory): uint32 {.cdecl.} =
@@ -15,7 +26,7 @@ var clapFactory = clap.PluginFactory(
     if not clap.versionIsCompatible(host.clapVersion):
       return nil
 
-    reaper.loadFunctions(host)
+    # reaper.loadFunctions(host)
 
     if pluginId == plugin.descriptor.id:
       return plugin.createInstance(host)

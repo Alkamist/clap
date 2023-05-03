@@ -3,8 +3,7 @@
 import clap
 import userplugin
 import extensions
-# import reaper
-import cscorrector
+# import cscorrector
 
 var descriptor* = clap.PluginDescriptor(
   clapVersion: clap.Version(major: 1, minor: 1, revision: 7),
@@ -19,36 +18,29 @@ var descriptor* = clap.PluginDescriptor(
 )
 
 proc init(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
-  let plugin = clapPlugin.getUserPlugin()
-  plugin.csCorrector = CsCorrector()
-  cscorrector.print = userplugin.print
-  # plugin.registerTimer("DebugPrint", 0, proc() =
-  #   if debugStringChanged:
-  #     reaper.showConsoleMsg(cstring(debugString))
-  #     debugString = ""
-  #     debugStringChanged = false
-  # )
+  # let plugin = clapPlugin.getUserPlugin()
+  # plugin.csCorrector = CsCorrector()
   return true
 
 proc destroy(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
-  # plugin.unregisterTimer("DebugPrint")
+  # plugin.csCorrector.reset()
   GcUnref(plugin)
 
 proc activate(clapPlugin: ptr clap.Plugin, sampleRate: float64, minFramesCount, maxFramesCount: uint32): bool {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
   plugin.sampleRate = sampleRate
   plugin.latency = 0
-  plugin.csCorrector.legatoDelayFirst = plugin.millisToSamples(-60.0)
-  plugin.csCorrector.legatoDelayLevel0 = plugin.millisToSamples(-300.0)
-  plugin.csCorrector.legatoDelayLevel1 = plugin.millisToSamples(-300.0)
-  plugin.csCorrector.legatoDelayLevel2 = plugin.millisToSamples(-300.0)
-  plugin.csCorrector.legatoDelayLevel3 = plugin.millisToSamples(-300.0)
+  # plugin.csCorrector.legatoDelayFirst = plugin.millisToSamples(-60.0)
+  # plugin.csCorrector.legatoDelayLevel0 = plugin.millisToSamples(-300.0)
+  # plugin.csCorrector.legatoDelayLevel1 = plugin.millisToSamples(-300.0)
+  # plugin.csCorrector.legatoDelayLevel2 = plugin.millisToSamples(-300.0)
+  # plugin.csCorrector.legatoDelayLevel3 = plugin.millisToSamples(-300.0)
   return true
 
 proc deactivate(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
-  plugin.csCorrector.reset()
+  # plugin.csCorrector.reset()
 
 proc startProcessing(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
   return true
@@ -58,7 +50,7 @@ proc stopProcessing(clapPlugin: ptr clap.Plugin) {.cdecl.} =
 
 proc reset(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
-  plugin.csCorrector.reset()
+  # plugin.csCorrector.reset()
 
 proc process(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): clap.ProcessStatus {.cdecl.} =
   let plugin = clapPlugin.getUserPlugin()
@@ -76,17 +68,17 @@ proc process(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): clap.P
         nextEventIndex = eventHeader.time
         break
 
-      if eventHeader.space_id == clap.coreEventSpaceId:
-        case eventHeader.`type`:
-        of EventType.Midi:
-          let event = cast[ptr clap.EventMidi](eventHeader)
-          if event.portIndex == uint16(plugin.midiPort):
-            plugin.csCorrector.processEvent(cscorrector.Event(
-              time: int(event.header.time),
-              data: event.data,
-            ))
-        else:
-          discard
+      # if eventHeader.space_id == clap.coreEventSpaceId:
+      #   case eventHeader.`type`:
+      #   of EventType.Midi:
+      #     let event = cast[ptr clap.EventMidi](eventHeader)
+      #     if event.portIndex == uint16(plugin.midiPort):
+      #       plugin.csCorrector.processEvent(cscorrector.Event(
+      #         time: int(event.header.time),
+      #         data: event.data,
+      #       ))
+      #   else:
+      #     discard
 
       eventIndex += 1
 
@@ -96,29 +88,29 @@ proc process(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): clap.P
 
     frame = nextEventIndex
 
-  plugin.csCorrector.pushEvents(int(frameCount), proc(event: cscorrector.Event) =
-    var clapEvent = clap.EventMidi(
-      header: clap.EventHeader(
-        size: uint32(sizeOf(clap.EventMidi)),
-        time: uint32(event.time),
-        spaceId: clap.coreEventSpaceId,
-        `type`: EventType.Midi,
-        flags: 0,
-      ),
-      portIndex: uint16(plugin.midiPort),
-      data: event.data,
-    )
-    discard clapProcess.outEvents.try_push(clapProcess.outEvents, clapEvent.header.addr)
-  )
+  # plugin.csCorrector.pushEvents(int(frameCount), proc(event: cscorrector.Event) =
+  #   var clapEvent = clap.EventMidi(
+  #     header: clap.EventHeader(
+  #       size: uint32(sizeOf(clap.EventMidi)),
+  #       time: uint32(event.time),
+  #       spaceId: clap.coreEventSpaceId,
+  #       `type`: EventType.Midi,
+  #       flags: 0,
+  #     ),
+  #     portIndex: uint16(plugin.midiPort),
+  #     data: event.data,
+  #   )
+  #   discard clapProcess.outEvents.tryPush(clapProcess.outEvents, clapEvent.header.addr)
+  # )
 
   return clap.Continue
 
 proc getExtension(clapPlugin: ptr clap.Plugin, id: cstring): pointer {.cdecl.} =
-  if id == clap.extGui: return extensions.gui.extension.addr
-  if id == clap.extLatency: return extensions.latency.extension.addr
-  if id == clap.extNotePorts: return extensions.noteports.extension.addr
-  # if id == clap.extParams: return extensions.parameters.extension.addr
-  if id == clap.extTimerSupport: return extensions.timer.extension.addr
+  if id == clap.extGui: return addr(extensions.gui.extension)
+  if id == clap.extLatency: return addr(extensions.latency.extension)
+  if id == clap.extNotePorts: return addr(extensions.noteports.extension)
+  # if id == clap.extParams: return addr(extensions.parameters.extension)
+  if id == clap.extTimerSupport: return addr(extensions.timer.extension)
 
 proc onMainThread(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   discard
@@ -128,7 +120,7 @@ proc createInstance*(host: ptr clap.Host): ptr clap.Plugin =
   GcRef(plugin)
   plugin.clapHost = host
   plugin.clapPlugin = clap.Plugin(
-    desc: descriptor.addr,
+    desc: addr(descriptor),
     pluginData: cast[pointer](plugin),
     init: init,
     destroy: destroy,
@@ -141,4 +133,4 @@ proc createInstance*(host: ptr clap.Host): ptr clap.Plugin =
     getExtension: getExtension,
     onMainThread: onMainThread,
   )
-  return plugin.clapPlugin.addr
+  return addr(plugin.clapPlugin)

@@ -4,7 +4,7 @@ import std/algorithm
 import std/sequtils
 import midi
 
-var print*: proc(x: string)
+var debugString* = ""
 
 type
   Note* = ref object
@@ -28,15 +28,15 @@ type
 
 proc `$`*(event: Event): string =
   if event == nil:
-    "Event(nil)"
+    "nil"
   else:
-    &"Event(kind: {event.data.kind}, time: {event.time}, isSent: {event.isSent})"
+    &"[{event.data.kind}, {event.time}, {event.isSent}]"
 
 proc `$`*(note: Note): string =
   if note.off.isSome:
-    &"Note(on: {$note.on}, off: {$note.off.get})"
+    &"Note[{$note.on}, {$note.off.get}]"
   else:
-    &"Note(on: {$note.on}, off: None)"
+    &"Note[{$note.on}, None]"
 
 proc isSent*(note: Note): bool =
   note.off.isSome and note.off.get.isSent
@@ -175,6 +175,11 @@ proc pushEvents*(cs: CsCorrector, frameCount: int, pushProc: proc(event: Event))
   # for event in cs.otherEvents:
   #   print($event)
 
+  var notesExist = false
   for key in 0 ..< 128:
     for note in cs.notes[key]:
-      print($note)
+      notesExist = true
+      debugString &= $note
+
+  if not notesExist:
+    debugString = ""
