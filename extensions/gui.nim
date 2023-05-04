@@ -1,10 +1,8 @@
 {.experimental: "overloadableEnums".}
 
 import opengl as gl
-import ./timer
 import ../clap
 import ../userplugin
-import ../cscorrector
 
 const consolaData = staticRead("consola.ttf")
 
@@ -12,22 +10,7 @@ proc onFrame(plugin: UserPlugin) =
   let (width, _) = plugin.window.size()
   let vg = plugin.vg
   vg.setTextAlign(Left, Top)
-  vg.drawTextBox(0, 0, float(width), cscorrector.debugString)
-
-  # let timeOffset = -float(width) / (0.3 * plugin.sampleRate)
-  # let timeWidth = float(width) / (1.0 * plugin.sampleRate)
-  # let rowHeight = float(height) / 128.0
-
-  # let cs = plugin.cscorrector
-  # for key in 0 ..< 128:
-  #   for note in cs.notes[key]:
-  #     vg.beginPath()
-  #     vg.rect(timeOffset + float(note.on.time) * timeWidth, float(key) * rowHeight, 20.0, 0.8 * rowHeight)
-  #     if note.on.isSent:
-  #       vg.setStrokeColor(0.0, 1.0, 0.0, 1.0)
-  #     else:
-  #       vg.setStrokeColor(1.0, 0.0, 0.0, 1.0)
-  #     vg.stroke()
+  vg.drawTextBox(0, 0, float(width), userplugin.debugString)
 
 proc processFrame(plugin: UserPlugin) =
   plugin.window.makeContextCurrent()

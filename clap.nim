@@ -73,6 +73,16 @@ type
     portIndex*: uint16
     data*: array[3, uint8]
 
+  TransportFlags* = enum
+    HasTempo
+    HasBeatsTimeline
+    HasSecondsTimeline
+    HasTimeSignature
+    IsPlaying
+    IsRecording
+    IsLoopActive
+    IsWithinPreRoll
+
   EventTransport* {.bycopy.} = object
     header*: EventHeader
     flags*: uint32
@@ -115,6 +125,9 @@ type
   PluginLatency* {.bycopy.} = object
     get*: proc(plugin: ptr Plugin): uint32 {.cdecl.}
 
+  HostLatency* {.bycopy.} = object
+    changed*: proc(host: ptr Host) {.cdecl.}
+
   Process* {.bycopy.} = object
     steadyTime*: int64
     framesCount*: uint32
@@ -130,7 +143,7 @@ type
     id*: Id
     supportedDialects*: uint32
     preferredDialect*: uint32
-    name*: array[nameSize, uint8]
+    name*: array[nameSize, char]
 
   PluginNotePorts* {.bycopy.} = object
     count*: proc(plugin: ptr Plugin, isInput: bool): uint32 {.cdecl.}
@@ -158,8 +171,8 @@ type
     id*: Id
     flags*: uint32
     cookie*: pointer
-    name*: array[nameSize, uint8]
-    module*: array[pathSize, uint8]
+    name*: array[nameSize, char]
+    module*: array[pathSize, char]
     minValue*: float64
     maxValue*: float64
     defaultValue*: float64
@@ -168,7 +181,7 @@ type
     count*: proc(plugin: ptr Plugin): uint32 {.cdecl.}
     getInfo*: proc(plugin: ptr Plugin, paramIndex: uint32, paramInfo: ptr ParamInfo): bool {.cdecl.}
     getValue*: proc(plugin: ptr Plugin, paramId: Id, outValue: ptr float64): bool {.cdecl.}
-    valueToText*: proc(plugin: ptr Plugin, paramId: Id, value: float64, outBuffer: ptr UncheckedArray[uint8], outBufferCapacity: uint32): bool {.cdecl.}
+    valueToText*: proc(plugin: ptr Plugin, paramId: Id, value: float64, outBuffer: ptr UncheckedArray[char], outBufferCapacity: uint32): bool {.cdecl.}
     textToValue*: proc(plugin: ptr Plugin, paramId: Id, paramValueText: cstring, outValue: ptr float64): bool {.cdecl.}
     flush*: proc(plugin: ptr Plugin, input: ptr InputEvents, output: ptr OutputEvents) {.cdecl.}
 
@@ -276,3 +289,12 @@ proc versionIsCompatible*(v: Version): bool =
 
 converter toUint16*(eventType: EventType): uint16 = uint16(eventType)
 converter toUint32*(noteDialectSet: set[NoteDialect]): uint32 = cast[uint32](noteDialectSet)
+
+import std/typetraits; export typetraits
+template writeTo*(str: string, buffer, length: untyped) =
+  let strLen = str.len
+  for i in 0 ..< int(length):
+    if i < strLen:
+      buffer[i] = elementType(buffer)(str[i])
+    else:
+      buffer[i] = elementType(buffer)(0)

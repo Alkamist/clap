@@ -14,16 +14,16 @@ type
 
 proc kind*(msg: Message): MessageKind =
   let statusCode = msg[0] and 0xF0
-  case statusCode:
-  of 0x80: return NoteOff
-  of 0x90: return NoteOn
-  of 0xA0: return Aftertouch
-  of 0xB0: return Cc
-  of 0xC0: return PatchChange
-  of 0xD0: return ChannelPressure
-  of 0xE0: return PitchBend
-  of 0xF0: return NonMusical
-  else: return Unknown
+  return case statusCode:
+    of 0x80: NoteOff
+    of 0x90: NoteOn
+    of 0xA0: Aftertouch
+    of 0xB0: Cc
+    of 0xC0: PatchChange
+    of 0xD0: ChannelPressure
+    of 0xE0: PitchBend
+    of 0xF0: NonMusical
+    else: Unknown
 
 proc channel*(msg: Message): uint8 = return min(msg[0] and 0x0F, 15)
 proc key*(msg: Message): uint8 = return min(msg[1], 127)

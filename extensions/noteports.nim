@@ -10,6 +10,6 @@ var extension* = clap.PluginNotePorts(
     info.id = 0
     info.supportedDialects = {NoteDialect.Midi}
     info.preferredDialect = {NoteDialect.Midi}
-    # clap.write_string(info.name[:], "MIDI Port 1")
+    "MIDI Port 1".writeTo(info.name, clap.nameSize)
     return true
 )

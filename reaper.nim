@@ -15,5 +15,5 @@ proc getReaperPluginInfo(clapHost: ptr clap.Host): ptr PluginInfo =
 
 proc loadFunctions*(clapHost: ptr clap.Host) =
   var reaperPluginInfo = clapHost.getReaperPluginInfo()
-  showConsoleMsg = cast[typeOf(showConsoleMsg)](reaperPluginInfo.getFunc("ShowConsoleMsg"))
-  showMessageBox = cast[typeOf(showMessageBox)](reaperPluginInfo.getFunc("ShowMessageBox"))
+  showConsoleMsg = cast[typeof(showConsoleMsg)](reaperPluginInfo.getFunc("ShowConsoleMsg"))
+  showMessageBox = cast[typeof(showMessageBox)](reaperPluginInfo.getFunc("ShowMessageBox"))
