@@ -289,12 +289,3 @@ proc versionIsCompatible*(v: Version): bool =
 
 converter toUint16*(eventType: EventType): uint16 = uint16(eventType)
 converter toUint32*(noteDialectSet: set[NoteDialect]): uint32 = cast[uint32](noteDialectSet)
-
-import std/typetraits; export typetraits
-template writeTo*(str: string, buffer, length: untyped) =
-  let strLen = str.len
-  for i in 0 ..< int(length):
-    if i < strLen:
-      buffer[i] = elementType(buffer)(str[i])
-    else:
-      buffer[i] = elementType(buffer)(0)

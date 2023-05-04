@@ -1,8 +1,8 @@
 {.experimental: "overloadableEnums".}
 
 import opengl as gl
-import ../clap
-import ../userplugin
+import ./binding as clap
+import ./shared
 
 const consolaData = staticRead("consola.ttf")
 
@@ -37,7 +37,7 @@ var extension* = clap.PluginGui(
     if not (api == clap.windowApi and not isFloating):
       return false
 
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.window = OsWindow.new()
     plugin.window.makeContextCurrent()
     plugin.window.setDecorated(false)
@@ -83,7 +83,7 @@ var extension* = clap.PluginGui(
     return true
   ,
   destroy: proc(clapPlugin: ptr clap.Plugin) {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.unregisterTimer("Gui")
     plugin.window.close()
   ,
@@ -91,7 +91,7 @@ var extension* = clap.PluginGui(
     return false
   ,
   getSize: proc(clapPlugin: ptr clap.Plugin, width, height: ptr uint32): bool {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     let (w, h) = plugin.window.size()
     width[] = uint32(w)
     height[] = uint32(h)
@@ -110,13 +110,13 @@ var extension* = clap.PluginGui(
     return true
   ,
   setSize: proc(clapPlugin: ptr clap.Plugin, width, height: uint32): bool {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.window.setPosition(0, 0)
     plugin.window.setSize(int(width), int(height))
     return true
   ,
   setParent: proc(clapPlugin: ptr clap.Plugin, window: ptr clap.Window): bool {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.window.embedInsideWindow(cast[pointer](window.union.win32))
     plugin.window.setPosition(0, 0)
     return true
@@ -128,12 +128,12 @@ var extension* = clap.PluginGui(
     discard
   ,
   show: proc(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.window.show()
     return true
   ,
   hide: proc(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
-    let plugin = clapPlugin.getUserPlugin()
+    let plugin = clapPlugin.getAudioPlugin()
     plugin.window.hide()
     return true
   ,

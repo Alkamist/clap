@@ -1,4 +1,4 @@
-import clap
+import ./binding as clap
 
 type
   PluginInfo* {.bycopy.} = object
@@ -10,10 +10,7 @@ type
 var showConsoleMsg*: proc(msg: cstring) {.cdecl.}
 var showMessageBox*: proc(msg: cstring, title: cstring, `type`: cint): cint {.cdecl.}
 
-proc getReaperPluginInfo(clapHost: ptr clap.Host): ptr PluginInfo =
-  cast[ptr PluginInfo](clapHost.getExtension(clapHost, "cockos.reaper_extension"))
-
 proc loadFunctions*(clapHost: ptr clap.Host) =
-  var reaperPluginInfo = clapHost.getReaperPluginInfo()
+  var reaperPluginInfo = cast[ptr PluginInfo](clapHost.getExtension(clapHost, "cockos.reaper_extension"))
   showConsoleMsg = cast[typeof(showConsoleMsg)](reaperPluginInfo.getFunc("ShowConsoleMsg"))
   showMessageBox = cast[typeof(showMessageBox)](reaperPluginInfo.getFunc("ShowMessageBox"))
