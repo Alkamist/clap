@@ -143,6 +143,16 @@ proc drawText*(vg: VectorGraphics, x, y: float, text: openArray[char]): float {.
     cast[cstring](cast[uint64](unsafeAddr(text[text.len - 1])) + 1),
   )
 
+proc drawTextBox*(vg: VectorGraphics, x, y, width: float, text: openArray[char]) =
+  if text.len <= 0:
+    return
+  nvgTextBox(
+    vg.ctx,
+    x, y, width,
+    cast[cstring](unsafeAddr(text[0])),
+    cast[cstring](cast[uint64](unsafeAddr(text[text.len - 1])) + 1),
+  )
+
 proc textMetrics*(vg: VectorGraphics): tuple[ascender, descender, lineHeight: float32] =
   nvgTextMetrics(vg.ctx, addr(result.ascender), addr(result.descender), addr(result.lineHeight))
 

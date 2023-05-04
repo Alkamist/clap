@@ -1,6 +1,6 @@
 import std/tables; export tables
 import clap
-# import cscorrector
+import cscorrector
 import ./oswindow; export oswindow
 import ./vectorgraphics; export vectorgraphics
 
@@ -8,7 +8,7 @@ type
   UserPlugin* = ref object
     window*: OsWindow
     vg*: VectorGraphics
-    # csCorrector*: CsCorrector
+    csCorrector*: CsCorrector
     clapHost*: ptr clap.Host
     clapPlugin*: clap.Plugin
     sampleRate*: float

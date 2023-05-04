@@ -30,48 +30,53 @@ proc `$`*(event: Event): string =
   if event == nil:
     "nil"
   else:
-    &"[{event.data.kind}, {event.time}, {event.isSent}]"
+    &"{event.time}"
 
 proc `$`*(note: Note): string =
   if note.off.isSome:
-    &"Note[{$note.on}, {$note.off.get}]"
+    &"[{$note.on}, {$note.off.get}]"
   else:
-    &"Note[{$note.on}, None]"
+    &"[{$note.on}, None]"
 
 proc isSent*(note: Note): bool =
   note.off.isSome and note.off.get.isSent
 
-# proc requiredLatency*(cs: CsCorrector): int =
-#   return -min(min(min(min(min(
-#     0,
-#     cs.legatoDelayFirst),
-#     cs.legatoDelayLevel0),
-#     cs.legatoDelayLevel1),
-#     cs.legatoDelayLevel2),
-#     cs.legatoDelayLevel3,
-#   )
-
 proc requiredLatency*(cs: CsCorrector): int =
-  return 48000
+  return -min(min(min(min(min(
+    0,
+    cs.legatoDelayFirst),
+    cs.legatoDelayLevel0),
+    cs.legatoDelayLevel1),
+    cs.legatoDelayLevel2),
+    cs.legatoDelayLevel3,
+  ) * 2
+
+# proc requiredLatency*(cs: CsCorrector): int =
+#   48000
 
 proc startNote(cs: CsCorrector, noteOn: Event) =
   let key = noteOn.data.key
 
   var delay = 0
   if cs.heldKey.isSome:
-    delay = cs.legatoDelayLevel0
+    let velocity = noteOn.data.velocity
+    if velocity <= 20:
+      delay = cs.legatoDelayLevel0
+    elif velocity > 20 and velocity <= 64:
+      delay = cs.legatoDelayLevel1
+    elif velocity > 64 and velocity <= 100:
+      delay = cs.legatoDelayLevel2
+    else:
+      delay = cs.legatoDelayLevel3
   else:
     delay = cs.legatoDelayFirst
 
   cs.heldKey = some(key)
 
-  noteOn.time += cs.requiredLatency + delay
-  var insertIndex = 0
-  for i, note in cs.notes[key]:
-    if noteOn.time > note.on.time:
-      insertIndex = i
-  cs.notes[key].insert(Note(on: noteOn, off: none(Event)), insertIndex)
-  # cs.notes[key].add(Note(on: noteOn, off: none(Event)))
+  # noteOn.time += cs.requiredLatency + delay
+  noteOn.time += delay
+
+  cs.notes[key].add(Note(on: noteOn, off: none(Event)))
 
 proc finishNote(cs: CsCorrector, noteOff: Event) =
   let key = noteOff.data.key
@@ -79,7 +84,7 @@ proc finishNote(cs: CsCorrector, noteOff: Event) =
   if cs.heldKey.isSome and key == cs.heldKey.get:
     cs.heldKey = none(uint8)
 
-  noteOff.time += cs.requiredLatency
+  # noteOff.time += cs.requiredLatency
 
   for note in cs.notes[key]:
     if note.off.isNone:
@@ -99,7 +104,7 @@ proc processEvent*(cs: CsCorrector, event: Event) =
   of NoteOn:
     cs.startNote(event)
   else:
-    event.time += cs.requiredLatency
+    # event.time += cs.requiredLatency
     cs.otherEvents.add(event)
 
 proc getSortedEvents(cs: CsCorrector): seq[Event] =
@@ -128,27 +133,25 @@ proc decreaseEventTimes(cs: CsCorrector, frameCount: int) =
       if note.off.isSome:
         note.off.get.time -= frameCount
 
-# proc fixNoteOverlaps(cs: CsCorrector, note: Note) =
-#   if note.off.isNone:
-#     return
+proc fixNoteOverlaps(cs: CsCorrector) =
+  for key in 0 ..< 128:
+    var sortedNotes = cs.notes[key]
 
-#   let key = note.on.data.key
-#   cs.notes[key].sort do (x, y: Note) -> int:
-#     cmp(x.on.time, y.on.time)
+    sortedNotes.sort do (x, y: Note) -> int:
+      cmp(x.on.time, y.on.time)
 
-#   for bufferNote in cs.notes[key]:
-#     if note == bufferNote:
-#       continue
-#     if note.off.get.time > bufferNote.on.time:
-#       note.off.get.time = bufferNote.on.time
-
-  # if note.off.get.time < note.on.time:
-  #   note.off.get.time = note.on.time
+    for i in 1 ..< sortedNotes.len:
+      var prevNote = sortedNotes[i - 1]
+      var note = sortedNotes[i]
+      if prevNote.off.isSome and prevNote.off.get.time > note.on.time:
+        prevNote.off.get.time = note.on.time
+        if prevNote.off.get.time < prevNote.on.time:
+          prevNote.off.get.time = prevNote.on.time
 
 proc pushEvents*(cs: CsCorrector, frameCount: int, pushProc: proc(event: Event)) =
   let sortedEvents = cs.getSortedEvents()
   for event in sortedEvents:
-    if event.time < frameCount:
+    if event.time < frameCount - cs.requiredLatency:
       if not event.isSent:
         event.isSent = true
         pushProc(event)
@@ -156,30 +159,10 @@ proc pushEvents*(cs: CsCorrector, frameCount: int, pushProc: proc(event: Event))
       break
 
   cs.removeSentEvents()
-
-  # for key in 0 ..< 128:
-  #   # cs.notes[key].sort do (x, y: Note) -> int:
-  #   #   cmp(x.on.time, y.on.time)
-  #   for i in 1 ..< cs.notes[key].len:
-  #     let prevNote = cs.notes[key][i - 1]
-  #     let note = cs.notes[key][i]
-  #     if prevNote.off.get.time > note.on.time:
-        # prevNote.off.get.time = note.on.time
-
-  # for key in 0 ..< 128:
-  #   for note in cs.notes[key]:
-  #     cs.fixNoteOverlaps(note)
-
+  cs.fixNoteOverlaps()
   cs.decreaseEventTimes(frameCount)
 
-  # for event in cs.otherEvents:
-  #   print($event)
-
-  var notesExist = false
-  for key in 0 ..< 128:
-    for note in cs.notes[key]:
-      notesExist = true
-      debugString &= $note
-
-  if not notesExist:
-    debugString = ""
+  # debugString = ""
+  # for key in 0 ..< 128:
+  #   for note in cs.notes[key]:
+  #     debugString &= $note
