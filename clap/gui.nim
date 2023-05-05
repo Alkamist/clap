@@ -1,8 +1,6 @@
 {.experimental: "overloadableEnums".}
 
 import opengl as gl
-import ./binding as clap
-import ./shared
 
 const consolaData = staticRead("consola.ttf")
 

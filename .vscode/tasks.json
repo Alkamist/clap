@@ -14,7 +14,7 @@
             "--noMain",
             "--debugger:native",
             "--o:plugin.clap",
-            "main.nim"
+            "plugin.nim"
         ],
         "options": {
             "cwd": "${workspaceRoot}"

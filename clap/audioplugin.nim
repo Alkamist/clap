@@ -5,6 +5,7 @@ import std/locks
 import std/tables
 import std/parseutils
 import std/strutils
+import std/algorithm
 import std/typetraits
 import ./binding as clap
 
@@ -42,10 +43,10 @@ type
     module*: string
 
   AudioPluginInstance* = ref object
+    userData*: pointer
+    pluginType*: AudioPlugin
     sampleRate*: float
     latency*: int
-    parameterCount*: int
-    parameterInfo*: seq[ParameterInfo]
     isActive: bool
     clapHost: ptr clap.Host
     clapPlugin: clap.Plugin
@@ -56,9 +57,14 @@ type
     mainThreadParameterChanged: seq[bool]
     audioThreadParameterValue: seq[float]
     audioThreadParameterChanged: seq[bool]
+    midiEvents: seq[MidiEvent]
 
   AudioPlugin* = ref object
+    onInit*: proc(plugin: AudioPluginInstance)
+    onDestroy*: proc(plugin: AudioPluginInstance)
+    onBlock*: proc(plugin: AudioPluginInstance, blockSize: int)
     onMidiEvent*: proc(plugin: AudioPluginInstance, event: MidiEvent)
+    parameterInfo*: seq[ParameterInfo]
     clapDescriptor: clap.PluginDescriptor
 
 var audioPlugins: seq[AudioPlugin]
@@ -90,34 +96,6 @@ proc new*(T: type AudioPlugin,
   )
   audioPlugins.add(result)
 
-proc addParameter*(plugin: AudioPlugin,
-                   id: enum,
-                   name: string,
-                   minValue: float,
-                   maxValue: float,
-                   defaultValue: float,
-                   flags: set[ParamInfoFlags],
-                   module = "") =
-  let idInt = int(id)
-  if plugin.parameterCount < idInt + 1:
-    plugin.parameterCount = idInt + 1
-    plugin.parameterInfo.setLen(plugin.parameterCount)
-    plugin.mainThreadParameterValue.setLen(plugin.parameterCount)
-    plugin.mainThreadParameterChanged.setLen(plugin.parameterCount)
-    plugin.audioThreadParameterValue.setLen(plugin.parameterCount)
-    plugin.audioThreadParameterChanged.setLen(plugin.parameterCount)
-  plugin.mainThreadParameterValue[idInt] = defaultValue
-  plugin.audioThreadParameterValue[idInt] = defaultValue
-  plugin.parameterInfo[idInt] = ParameterInfo(
-    id: idInt,
-    name: name,
-    minValue: minValue,
-    maxValue: maxValue,
-    defaultValue: defaultValue,
-    flags: flags,
-    module: module,
-  )
-
 
 # ===================================================================================================
 # Utility
@@ -143,14 +121,25 @@ proc getPluginInstance(clapPlugin: ptr clap.Plugin): AudioPluginInstance =
 
 proc pluginInit(clapPlugin: ptr clap.Plugin): bool {.cdecl.} =
   let plugin = clapPlugin.getPluginInstance()
+
   plugin.parameterLock.initLock()
+  plugin.mainThreadParameterValue.setLen(plugin.parameterCount)
+  plugin.mainThreadParameterChanged.setLen(plugin.parameterCount)
+  plugin.audioThreadParameterValue.setLen(plugin.parameterCount)
+  plugin.audioThreadParameterChanged.setLen(plugin.parameterCount)
   for i in 0 ..< plugin.parameterCount:
-    plugin.mainThreadParameterValue[i] = plugin.parameterInfo[i].defaultValue
-    plugin.audioThreadParameterValue[i] = plugin.parameterInfo[i].defaultValue
+    plugin.mainThreadParameterValue[i] = plugin.pluginType.parameterInfo[i].defaultValue
+    plugin.audioThreadParameterValue[i] = plugin.pluginType.parameterInfo[i].defaultValue
+
+  if plugin.pluginType.onInit != nil:
+    plugin.pluginType.onInit(plugin)
+
   return true
 
 proc pluginDestroy(clapPlugin: ptr clap.Plugin) {.cdecl.} =
   let plugin = clapPlugin.getPluginInstance()
+  if plugin.pluginType.onDestroy != nil:
+    plugin.pluginType.onDestroy(plugin)
   plugin.parameterLock.deinitLock()
   GcUnref(plugin)
 
@@ -208,8 +197,14 @@ proc pluginProcess(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): 
           let event = cast[ptr EventParamValue](eventHeader)
           plugin.handleEventParamValue(event)
 
-        # of clap.EventType.Midi:
-        #   let event = cast[ptr EventMidi](eventHeader)
+        of clap.EventType.Midi:
+          let event = cast[ptr EventMidi](eventHeader)
+          if plugin.pluginType.onMidiEvent != nil:
+            plugin.pluginType.onMidiEvent(plugin, MidiEvent(
+              time: int(eventHeader.time),
+              port: int(event.portIndex),
+              data: event.data,
+            ))
 
         else:
           discard
@@ -222,6 +217,30 @@ proc pluginProcess(clapPlugin: ptr clap.Plugin, clapProcess: ptr clap.Process): 
 
     frame = nextEventIndex
 
+  if plugin.pluginType.onBlock != nil:
+    plugin.pluginType.onBlock(plugin, int(frameCount))
+
+  # Sort midi events.
+  plugin.midiEvents.sort do (x, y: MidiEvent) -> int:
+    cmp(x.time, y.time)
+
+  # Send midi events.
+  for i in 0 ..< plugin.midiEvents.len:
+    let event = plugin.midiEvents[i]
+    var clapEvent = clap.EventMidi(
+      header: clap.EventHeader(
+        size: uint32(sizeof(clap.EventMidi)),
+        time: uint32(event.time),
+        spaceId: clap.coreEventSpaceId,
+        `type`: EventType.Midi,
+        flags: 0,
+      ),
+      portIndex: uint16(event.port),
+      data: event.data,
+    )
+    discard clapProcess.outEvents.tryPush(clapProcess.outEvents, addr(clapEvent.header))
+  plugin.midiEvents.setLen(0)
+
   return clap.ProcessStatus.Continue
 
 proc pluginOnMainThread(clapPlugin: ptr clap.Plugin) {.cdecl.} =
@@ -233,10 +252,12 @@ proc pluginGetExtension(clapPlugin: ptr clap.Plugin, id: cstring): pointer {.cde
   if id == extNotePorts: return addr(noteportsExtension)
   if id == extParams: return addr(parametersExtension)
   if id == extTimerSupport: return addr(timerExtension)
+  return nil
 
 proc pluginCreateInstance(id: int, host: ptr clap.Host): ptr clap.Plugin =
   let plugin = AudioPluginInstance()
   GcRef(plugin)
+  plugin.pluginType = audioPlugins[id]
   plugin.clapHost = host
   plugin.clapPlugin = clap.Plugin(
     desc: addr(audioPlugins[id].clapDescriptor),
@@ -260,6 +281,9 @@ proc pluginCreateInstance(id: int, host: ptr clap.Host): ptr clap.Plugin =
 # ===================================================================================================
 
 
+proc sendMidiEvent*(plugin: AudioPluginInstance, event: MidiEvent) =
+  plugin.midiEvents.add(event)
+
 var notePortsExtension = clap.PluginNotePorts(
   count: proc(clapPlugin: ptr clap.Plugin, isInput: bool): uint32 {.cdecl.} =
     return 1
@@ -278,6 +302,14 @@ var notePortsExtension = clap.PluginNotePorts(
 # ===================================================================================================
 
 
+proc setLatency*(plugin: AudioPluginInstance, value: int) =
+  plugin.latency = value
+  # Inform the host of the latency change.
+  let hostLatency = cast[ptr clap.HostLatency](plugin.clapHost.getExtension(plugin.clapHost, clap.extLatency))
+  hostLatency.changed(plugin.clapHost)
+  if plugin.isActive:
+    plugin.clapHost.requestRestart(plugin.clapHost)
+
 var latencyExtension = clap.PluginLatency(
   get: proc(clapPlugin: ptr clap.Plugin): uint32 {.cdecl.} =
     let plugin = clapPlugin.getPluginInstance()
@@ -289,6 +321,30 @@ var latencyExtension = clap.PluginLatency(
 # Parameters
 # ===================================================================================================
 
+
+proc addParameter*(plugin: AudioPlugin,
+                   id: enum,
+                   name: string,
+                   minValue: float,
+                   maxValue: float,
+                   defaultValue: float,
+                   flags: set[ParamInfoFlags],
+                   module = "") =
+  let idInt = int(id)
+  if plugin.parameterInfo.len < idInt + 1:
+    plugin.parameterInfo.setLen(idInt + 1)
+  plugin.parameterInfo[idInt] = ParameterInfo(
+    id: idInt,
+    name: name,
+    minValue: minValue,
+    maxValue: maxValue,
+    defaultValue: defaultValue,
+    flags: flags,
+    module: module,
+  )
+
+proc parameterCount*(plugin: AudioPluginInstance): int =
+  return plugin.pluginType.parameterInfo.len
 
 proc parametersSyncMainThreadToAudioThread(plugin: AudioPluginInstance, outputEvents: ptr clap.OutputEvents) =
   plugin.parameterLock.acquire()
@@ -337,13 +393,14 @@ var parametersExtension = clap.PluginParams(
     let plugin = clapPlugin.getPluginInstance()
     if plugin.parameterCount == 0:
       return false
-    paramInfo.id = uint32(plugin.parameterInfo[paramIndex].id)
-    paramInfo.flags = cast[uint32](plugin.parameterInfo[paramIndex].flags)
-    plugin.parameterInfo[paramIndex].name.writeTo(paramInfo.name, clap.nameSize)
-    plugin.parameterInfo[paramIndex].module.writeTo(paramInfo.module, clap.pathSize)
-    paramInfo.minValue = plugin.parameterInfo[paramIndex].minValue
-    paramInfo.maxValue = plugin.parameterInfo[paramIndex].maxValue
-    paramInfo.defaultValue = plugin.parameterInfo[paramIndex].defaultValue
+    let info = plugin.pluginType.parameterInfo
+    paramInfo.id = uint32(info[paramIndex].id)
+    paramInfo.flags = cast[uint32](info[paramIndex].flags)
+    info[paramIndex].name.writeTo(paramInfo.name, clap.nameSize)
+    info[paramIndex].module.writeTo(paramInfo.module, clap.pathSize)
+    paramInfo.minValue = info[paramIndex].minValue
+    paramInfo.maxValue = info[paramIndex].maxValue
+    paramInfo.defaultValue = info[paramIndex].defaultValue
     return true
   ,
 
@@ -399,6 +456,20 @@ var parametersExtension = clap.PluginParams(
 # Timer
 # ===================================================================================================
 
+
+proc registerTimer*(plugin: AudioPluginInstance, name: string, periodMs: int, timerProc: proc(plugin: AudioPluginInstance)) =
+  var id: clap.Id
+  let hostTimerSupport = cast[ptr clap.HostTimerSupport](plugin.clapHost.getExtension(plugin.clapHost, clap.extTimerSupport))
+  discard hostTimerSupport.registerTimer(plugin.clapHost, uint32(periodMs), id.addr)
+  plugin.timerNameToIdTable[name] = id
+  plugin.timerIdToProcTable[id] = timerProc
+
+proc unregisterTimer*(plugin: AudioPluginInstance, name: string) =
+  if plugin.timerNameToIdTable.hasKey(name):
+    let id = plugin.timerNameToIdTable[name]
+    let hostTimerSupport = cast[ptr clap.HostTimerSupport](plugin.clapHost.getExtension(plugin.clapHost, clap.extTimerSupport))
+    discard hostTimerSupport.unregisterTimer(plugin.clapHost, id)
+    plugin.timerIdToProcTable[id] = nil
 
 var timerExtension = clap.PluginTimerSupport(
   onTimer: proc(clapPlugin: ptr clap.Plugin, timerId: clap.Id) {.cdecl.} =

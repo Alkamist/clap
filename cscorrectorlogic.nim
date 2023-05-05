@@ -1,10 +1,8 @@
 {.experimental: "codeReordering".}
 
-# import std/strformat
 import std/options
 import std/algorithm
 import std/sequtils
-import midi
 
 type
   Note* = ref object
@@ -13,10 +11,10 @@ type
 
   Event* = ref object
     time*: int
-    data*: midi.Message
+    data*: MidiMessage
     isSent*: bool
 
-  CsCorrector* = ref object
+  CsCorrectorLogic* = ref object
     otherEvents*: seq[Event]
     notes*: array[128, seq[Note]]
     heldKey*: Option[uint8]
@@ -26,7 +24,7 @@ type
     legatoMediumDelay*: int
     legatoFastDelay*: int
 
-proc requiredLatency*(cs: CsCorrector): int =
+proc requiredLatency*(cs: CsCorrectorLogic): int =
   return -min(min(min(min(min(
     0,
     cs.legatoFirstNoteDelay),
@@ -36,13 +34,13 @@ proc requiredLatency*(cs: CsCorrector): int =
     cs.legatoFastDelay,
   ) * 2
 
-proc reset*(cs: CsCorrector) =
+proc reset*(cs: CsCorrectorLogic) =
   cs.heldKey = none(uint8)
   cs.otherEvents.setLen(0)
   for key in 0 ..< 128:
     cs.notes[key].setLen(0)
 
-proc processEvent*(cs: CsCorrector, event: Event) =
+proc processEvent*(cs: CsCorrectorLogic, event: Event) =
   if event == nil:
     return
   case event.data.kind:
@@ -54,7 +52,7 @@ proc processEvent*(cs: CsCorrector, event: Event) =
     # event.time += cs.requiredLatency
     cs.otherEvents.add(event)
 
-proc extractEvents*(cs: CsCorrector, frameCount: int): seq[Event] =
+proc extractEvents*(cs: CsCorrectorLogic, frameCount: int): seq[Event] =
   let sortedEvents = cs.getSortedEvents()
   for event in sortedEvents:
     if event.time < frameCount - cs.requiredLatency:
@@ -70,7 +68,7 @@ proc extractEvents*(cs: CsCorrector, frameCount: int): seq[Event] =
 proc isSent(note: Note): bool =
   note.off.isSome and note.off.get.isSent
 
-proc startNote(cs: CsCorrector, noteOn: Event) =
+proc startNote(cs: CsCorrectorLogic, noteOn: Event) =
   let key = noteOn.data.key
 
   var delay = 0
@@ -94,7 +92,7 @@ proc startNote(cs: CsCorrector, noteOn: Event) =
 
   cs.notes[key].add(Note(on: noteOn, off: none(Event)))
 
-proc finishNote(cs: CsCorrector, noteOff: Event) =
+proc finishNote(cs: CsCorrectorLogic, noteOff: Event) =
   let key = noteOff.data.key
 
   if cs.heldKey.isSome and key == cs.heldKey.get:
@@ -107,7 +105,7 @@ proc finishNote(cs: CsCorrector, noteOff: Event) =
     if note.off.isNone:
       note.off = some(noteOff)
 
-proc getSortedEvents(cs: CsCorrector): seq[Event] =
+proc getSortedEvents(cs: CsCorrectorLogic): seq[Event] =
   for i in 0 ..< cs.otherEvents.len:
     let event = cs.otherEvents[i]
     result.add(event)
@@ -121,12 +119,12 @@ proc getSortedEvents(cs: CsCorrector): seq[Event] =
   result.sort do (x, y: Event) -> int:
     cmp(x.time, y.time)
 
-proc removeSentEvents(cs: CsCorrector) =
+proc removeSentEvents(cs: CsCorrectorLogic) =
   cs.otherEvents.keepItIf(not it.isSent)
   for key in 0 ..< 128:
     cs.notes[key].keepItIf(not it.isSent)
 
-proc decreaseEventTimes(cs: CsCorrector, frameCount: int) =
+proc decreaseEventTimes(cs: CsCorrectorLogic, frameCount: int) =
   for i in 0 ..< cs.otherEvents.len:
     let event = cs.otherEvents[i]
     event.time -= frameCount
@@ -137,7 +135,7 @@ proc decreaseEventTimes(cs: CsCorrector, frameCount: int) =
       if note.off.isSome:
         note.off.get.time -= frameCount
 
-proc fixNoteOverlaps(cs: CsCorrector) =
+proc fixNoteOverlaps(cs: CsCorrectorLogic) =
   for key in 0 ..< 128:
     var sortedNotes = cs.notes[key]
 
@@ -152,14 +150,35 @@ proc fixNoteOverlaps(cs: CsCorrector) =
         if prevNote.off.get.time < prevNote.on.time:
           prevNote.off.get.time = prevNote.on.time
 
-# proc `$`*(event: Event): string =
-#   if event == nil:
-#     "nil"
-#   else:
-#     &"{event.time}"
+type
+  MidiMessage = array[3, uint8]
 
-# proc `$`*(note: Note): string =
-#   if note.off.isSome:
-#     &"[{$note.on}, {$note.off.get}]"
-#   else:
-#     &"[{$note.on}, None]"
+  MidiMessageKind = enum
+    Unknown
+    NoteOff
+    NoteOn
+    Aftertouch
+    Cc
+    PatchChange
+    ChannelPressure
+    PitchBend
+    NonMusical
+
+proc kind(msg: MidiMessage): MidiMessageKind =
+  let statusCode = msg[0] and 0xF0
+  return case statusCode:
+    of 0x80: NoteOff
+    of 0x90: NoteOn
+    of 0xA0: Aftertouch
+    of 0xB0: Cc
+    of 0xC0: PatchChange
+    of 0xD0: ChannelPressure
+    of 0xE0: PitchBend
+    of 0xF0: NonMusical
+    else: Unknown
+
+# proc channel(msg: MidiMessage): uint8 = return min(msg[0] and 0x0F, 15)
+proc key(msg: MidiMessage): uint8 = return min(msg[1], 127)
+proc velocity(msg: MidiMessage): uint8 = return min(msg[2], 127)
+# proc ccNumber(msg: MidiMessage): uint8 = return min(msg[1], 127)
+# proc ccValue(msg: MidiMessage): uint8 = return min(msg[2], 127)
