@@ -6,19 +6,24 @@ import ./extensions/noteports
 import ./extensions/parameters
 import ./extensions/timer
 
-proc getInstance*(plugin: ptr clap_plugin_t): AudioPlugin =
-  return cast[AudioPlugin](plugin.plugin_data)
-
 proc pluginInit*(plugin: ptr clap_plugin_t): bool {.cdecl.} =
   let instance = plugin.getInstance()
+
   instance.parameterLock.initLock()
+
   instance.mainThreadParameterValue.setLen(instance.parameterCount)
   instance.mainThreadParameterChanged.setLen(instance.parameterCount)
   instance.audioThreadParameterValue.setLen(instance.parameterCount)
   instance.audioThreadParameterChanged.setLen(instance.parameterCount)
+
   for i in 0 ..< instance.parameterCount:
-    instance.mainThreadParameterValue[i] = instance.info.parameterInfo[i].defaultValue
-    instance.audioThreadParameterValue[i] = instance.info.parameterInfo[i].defaultValue
+    instance.mainThreadParameterValue[i] = instance.dispatcher.parameterInfo[i].defaultValue
+    instance.audioThreadParameterValue[i] = instance.dispatcher.parameterInfo[i].defaultValue
+
+  instance.clapHostLog = cast[ptr clap_host_log_t](instance.clapHost.get_extension(instance.clapHost, CLAP_EXT_LOG))
+  instance.clapHostLatency = cast[ptr clap_host_latency_t](instance.clapHost.get_extension(instance.clapHost, CLAP_EXT_LATENCY))
+  instance.clapHostTimerSupport = cast[ptr clap_host_timer_support_t](instance.clapHost.get_extension(instance.clapHost, CLAP_EXT_TIMER_SUPPORT))
+
   return true
 
 proc pluginDestroy*(plugin: ptr clap_plugin_t) {.cdecl.} =
@@ -71,8 +76,8 @@ proc pluginProcess*(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
 
         of CLAP_EVENT_MIDI:
           let event = cast[ptr clap_event_midi_t](eventHeader)
-          if instance.info.onMidiEvent != nil:
-            instance.info.onMidiEvent(instance, MidiEvent(
+          if instance.dispatcher.onMidiEvent != nil:
+            instance.dispatcher.onMidiEvent(instance, MidiEvent(
               time: int(eventHeader.time),
               port: int(event.portIndex),
               data: event.data,

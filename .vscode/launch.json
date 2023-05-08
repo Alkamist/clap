@@ -1,14 +1,14 @@
 {
   "version": "0.2.0",
   "configurations": [
-      {
-          "type": "lldb",
-          "request": "launch",
-          "name": "nim: debug current file",
-          "preLaunchTask": "nim: build current file (for debugging)",
-          "program": "C:/Program Files/REAPER (x64)/reaper",
-          "args": [],
-          "cwd": "${workspaceFolder}",
-      }
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "nim: debug current file",
+      "preLaunchTask": "nim: build current file (for debugging)",
+      "program": "C:/Program Files/REAPER (x64)/reaper",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+    }
   ]
 }

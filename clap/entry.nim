@@ -3,18 +3,18 @@ import ./shared
 
 var clapFactory = clap_plugin_factory_t(
   get_plugin_count: proc(factory: ptr clap_plugin_factory_t): uint32 {.cdecl.} =
-    return uint32(pluginInfo.len)
+    return uint32(pluginDispatchers.len)
   ,
   get_plugin_descriptor: proc(factory: ptr clap_plugin_factory_t, index: uint32): ptr clap_plugin_descriptor_t {.cdecl.} =
-    return addr(pluginInfo[index].clapDescriptor)
+    return addr(pluginDispatchers[index].clapDescriptor)
   ,
   create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
     if not clap_version_is_compatible(host.clap_version):
       return nil
 
-    for i in 0 ..< pluginInfo.len:
-      if pluginId == pluginInfo[i].clapDescriptor.id:
-        return pluginInfo[i].createInstance(i, host)
+    for i in 0 ..< pluginDispatchers.len:
+      if pluginId == pluginDispatchers[i].clapDescriptor.id:
+        return pluginDispatchers[i].createInstance(i, host)
 )
 
 proc NimMain() {.importc.}
@@ -48,7 +48,7 @@ proc mainGetFactory(factoryId: cstring): pointer {.cdecl.} =
 #endif
 
 CLAP_EXPORT const `clap_plugin_entry_t` clap_entry = {
-  .clap_version = {1, 1, 7},
+  .clap_version = {1, 1, 8},
   .init = `mainInit`,
   .deinit = `mainDeinit`,
   .get_factory = `mainGetFactory`,

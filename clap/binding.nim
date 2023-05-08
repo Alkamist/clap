@@ -256,6 +256,13 @@ type
 const CLAP_VERSION_INIT* = clap_version_t(major: 1, minor: 1, revision: 7)
 template clap_version_is_compatible*(v: clap_version_t): bool = v.major >= 1
 
+const CLAP_LOG_DEBUG* = 0
+const CLAP_LOG_INFO* = 1
+const CLAP_LOG_WARNING* = 2
+const CLAP_LOG_ERROR* = 3
+const CLAP_LOG_FATAL* = 4
+const CLAP_LOG_HOST_MISBEHAVING* = 5
+const CLAP_LOG_PLUGIN_MISBEHAVING* = 6
 const CLAP_EVENT_NOTE_ON* = 0
 const CLAP_EVENT_NOTE_OFF* = 1
 const CLAP_EVENT_NOTE_CHOKE* = 2
@@ -310,6 +317,7 @@ const CLAP_EXT_NOTE_PORTS* = cstring"clap.note-ports"
 const CLAP_EXT_AUDIO_PORTS* = cstring"clap.audio-ports"
 const CLAP_EXT_TIMER_SUPPORT* = cstring"clap.timer-support"
 const CLAP_EXT_LATENCY* = cstring"clap.latency"
+const CLAP_EXT_LOG* = cstring"clap.log"
 const CLAP_EXT_GUI* = cstring"clap.gui"
 
 const CLAP_WINDOW_API_WIN32* = cstring"win32"

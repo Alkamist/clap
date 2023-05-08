@@ -14,9 +14,11 @@ proc registerAudioPlugin*(
   supportUrl: string,
   version: string,
   description: string,
-): AudioPluginInfo =
-  result = AudioPluginInfo()
+): AudioPluginDispatcher =
+  result = AudioPluginDispatcher()
+
   result.clapDescriptor = clap_plugin_descriptor_t(
+    clap_version: clap_version_t(major: 1, minor: 1, revision: 8),
     id: id,
     name: name,
     vendor: vendor,
@@ -26,14 +28,14 @@ proc registerAudioPlugin*(
     version: version,
     description: description,
   )
-  pluginInfo.add(result)
+
   result.createInstance = proc(index: int, host: ptr clap_host_t): ptr clap_plugin_t =
     let plugin = T()
     GcRef(plugin)
-    plugin.info = pluginInfo[index]
+    plugin.dispatcher = pluginDispatchers[index]
     plugin.clapHost = host
     plugin.clapPlugin = clap_plugin_t(
-      desc: addr(pluginInfo[index].clapDescriptor),
+      desc: addr(pluginDispatchers[index].clapDescriptor),
       pluginData: cast[pointer](plugin),
       init: pluginInit,
       destroy: pluginDestroy,
@@ -48,8 +50,10 @@ proc registerAudioPlugin*(
     )
     return addr(plugin.clapPlugin)
 
+  pluginDispatchers.add(result)
+
 proc addParameter*(
-  plugin: AudioPluginInfo,
+  dispatcher: AudioPluginDispatcher,
   id: enum,
   name: string,
   minValue: float,
@@ -59,9 +63,11 @@ proc addParameter*(
   module = "",
 ) =
   let idInt = int(id)
-  if plugin.parameterInfo.len < idInt + 1:
-    plugin.parameterInfo.setLen(idInt + 1)
-  plugin.parameterInfo[idInt] = ParameterInfo(
+
+  if dispatcher.parameterInfo.len < idInt + 1:
+    dispatcher.parameterInfo.setLen(idInt + 1)
+
+  dispatcher.parameterInfo[idInt] = ParameterInfo(
     id: idInt,
     name: name,
     minValue: minValue,
@@ -73,12 +79,3 @@ proc addParameter*(
 
 proc sendMidiEvent*(plugin: AudioPlugin, event: MidiEvent) =
   plugin.outputMidiEvents.add(event)
-
-proc setLatency*(instance: AudioPlugin, value: int) =
-  instance.latency = value
-
-  # Inform the host of the latency change.
-  let hostLatency = cast[ptr clap_host_latency_t](instance.clapHost.get_extension(instance.clapHost, CLAP_EXT_LATENCY))
-  hostLatency.changed(instance.clapHost)
-  if instance.isActive:
-    instance.clapHost.requestRestart(instance.clapHost)
