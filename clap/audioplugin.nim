@@ -52,14 +52,14 @@ proc registerAudioPlugin*(
 
   pluginDispatchers.add(result)
 
-proc addParameter*(
+proc addParameter*[P: enum](
   dispatcher: AudioPluginDispatcher,
-  id: enum,
+  id: P,
   name: string,
   minValue: float,
   maxValue: float,
   defaultValue: float,
-  flags: set[ParamInfoFlags],
+  flags: set[ParameterFlag],
   module = "",
 ) =
   let idInt = int(id)
@@ -79,3 +79,6 @@ proc addParameter*(
 
 proc sendMidiEvent*(plugin: AudioPlugin, event: MidiEvent) =
   plugin.outputMidiEvents.add(event)
+
+proc secondsToSamples*(plugin: AudioPlugin, seconds: float): int =
+  return int(plugin.sampleRate * seconds)

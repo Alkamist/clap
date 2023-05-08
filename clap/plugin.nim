@@ -61,6 +61,12 @@ proc pluginProcess*(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
 
   instance.syncParametersMainThreadToAudioThread(process.out_events)
 
+  # let transportEvent = process.transport
+  # if transportEvent != nil:
+  #   if instance.dispatcher.onTransportEvent != nil:
+  #     instance.dispatcher.onTransportEvent(instance, TransportEvent(
+  #     ))
+
   while frame < frameCount:
     while eventIndex < eventCount and nextEventIndex == frame:
       let eventHeader = process.in_events.get(process.in_events, eventIndex)
@@ -93,6 +99,9 @@ proc pluginProcess*(plugin: ptr clap_plugin_t, process: ptr clap_process_t): cla
         break
 
     frame = nextEventIndex
+
+  if instance.dispatcher.onProcess != nil:
+    instance.dispatcher.onProcess(instance, int(process.frames_count))
 
   # Sort output midi events.
   instance.outputMidiEvents.sort do (x, y: MidiEvent) -> int:

@@ -1,3 +1,5 @@
+{.experimental: "overloadableEnums".}
+
 import std/tables; export tables
 import std/locks; export locks
 import std/typetraits; export typetraits
@@ -13,7 +15,55 @@ type
     port*: int
     data*: array[3, uint8]
 
-  ParamInfoFlags* = enum
+  ParameterEventKind* = enum
+    Value
+    Modulation
+    BeginUserChange
+    EndUserChange
+
+  ParameterEvent* = object
+    index*: int
+    case kind*: ParameterEventKind
+    of Value, Modulation:
+      noteId*: int
+      port*: int
+      channel*: int
+      key*: int
+      value*: float
+    else:
+      discard
+
+  TransportFlag* = enum
+    HasTempo
+    HasBeats
+    HasSeconds
+    HasTimeSignature
+    IsPlaying
+    IsRecording
+    LoopIsActive
+    IsWithinPreRoll
+
+  TransportEvent* = object
+    flags*: set[TransportFlag]
+
+    songPositionBeats*: float
+    songPositionSeconds*: float
+
+    loopStartBeats*: float
+    loopEndBeats*: float
+    loopStartSeconds*: float
+    loopEndSeconds*: float
+
+    tempo*: float
+    tempoIncrement*: float
+
+    barStart*: float
+    barNumber*: int
+
+    timeSignatureNumerator*: int
+    timeSignatureDenominator*: int
+
+  ParameterFlag* = enum
     IsStepped
     IsPeriodic
     IsHidden
@@ -37,7 +87,7 @@ type
     minValue*: float
     maxValue*: float
     defaultValue*: float
-    flags*: set[ParamInfoFlags]
+    flags*: set[ParameterFlag]
     module*: string
 
   AudioPlugin* = ref object of RootObj
@@ -60,7 +110,10 @@ type
     outputMidiEvents*: seq[MidiEvent]
 
   AudioPluginDispatcher* = ref object
+    onParameterEvent*: proc(plugin: AudioPlugin, event: ParameterEvent)
+    onTransportEvent*: proc(plugin: AudioPlugin, event: TransportEvent)
     onMidiEvent*: proc(plugin: AudioPlugin, event: MidiEvent)
+    onProcess*: proc(plugin: AudioPlugin, frameCount: int)
     parameterInfo*: seq[ParameterInfo]
     clapDescriptor*: clap_plugin_descriptor_t
     createInstance*: proc(index: int, host: ptr clap_host_t): ptr clap_plugin_t
@@ -100,8 +153,8 @@ proc debug*(instance: AudioPlugin, msg: string) =
 # Parameters
 # =======================================================================================
 
-proc parameter*(instance: AudioPlugin, id: enum): float =
-  instance.audioThreadParameterValue(int(id))
+proc parameter*[P: enum](instance: AudioPlugin, id: P): float =
+  instance.audioThreadParameterValue[int(id)]
 
 proc parameterCount*(instance: AudioPlugin): int =
   return instance.dispatcher.parameterInfo.len
@@ -142,6 +195,7 @@ proc handleParameterValueEvent*(instance: AudioPlugin, event: ptr clap_event_par
   instance.audioThreadParameterValue[id] = event.value
   instance.audioThreadParameterChanged[id] = true
   instance.parameterLock.release()
+
 
 # =======================================================================================
 # Timer

@@ -11,4 +11,5 @@ var notePortsExtension* = clap_plugin_note_ports_t(
     info.preferred_dialect = CLAP_NOTE_DIALECT_MIDI
     writeStringToBuffer("MIDI Port 1", info.name, CLAP_NAME_SIZE)
     return true
+  ,
 )
