@@ -26,7 +26,8 @@ type
   CsCorrectorLogic* = ref object
     notes*: array[keyCount, seq[Note]]
     heldKey*: Option[int]
-    holdPedalIsHeld*: bool
+    holdPedalIsPhysicallyHeld*: bool
+    holdPedalIsVirtuallyHeld*: bool
     legatoFirstNoteDelay*: int
     legatoPortamentoDelay*: int
     legatoSlowDelay*: int
@@ -49,12 +50,21 @@ proc reset*(cs: CsCorrectorLogic) =
     cs.notes[key].setLen(0)
 
 proc processHoldPedal*(cs: CsCorrectorLogic, isHeld: bool) =
-  cs.holdPedalIsHeld = is_held
+  cs.holdPedalIsPhysicallyHeld = isHeld
+
+  if isHeld:
+    # Only hold down the virtual hold pedal if there is already a key held
+    if cs.heldKey.isSome:
+      cs.holdPedalIsVirtuallyHeld = true
+
+  # The virtual hold pedal is always released with the real one
+  else:
+    cs.holdPedalIsVirtuallyHeld = false
 
 proc processNoteOn*(cs: CsCorrectorLogic, time, key, velocity: int) =
   var delay = 0
 
-  if cs.heldKey.isSome or cs.holdPedalIsHeld:
+  if cs.heldKey.isSome or cs.holdPedalIsVirtuallyHeld:
     if velocity <= 20:
       delay = cs.legatoPortamentoDelay
     elif velocity > 20 and velocity <= 64:
@@ -76,10 +86,15 @@ proc processNoteOn*(cs: CsCorrectorLogic, time, key, velocity: int) =
   )
   cs.notes[key].add(Note(on: noteOn, off: none(NoteEvent)))
 
+  # The virtual hold pedal waits to activate until after the first note on
+  if cs.holdPedalIsPhysicallyHeld:
+    cs.holdPedalIsVirtuallyHeld = true
+
 proc processNoteOff*(cs: CsCorrectorLogic, time, key, velocity: int) =
   if cs.heldKey.isSome and key == cs.heldKey.get:
     cs.heldKey = none(int)
 
+  # Find the first note off that isn't complete and finish it
   for i in 0 ..< cs.notes[key].len:
     let note = cs.notes[key][i]
     if note.off.isNone:
