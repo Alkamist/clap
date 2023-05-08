@@ -14,6 +14,7 @@ type
   CsCorrector* = ref object of AudioPlugin
     logic*: CsCorrectorLogic
     isPlaying*: bool
+    wasPlaying*: bool
 
 let dispatcher = registerAudioPlugin(CsCorrector,
   id = "com.alkamist.CsCorrector",
@@ -31,6 +32,13 @@ dispatcher.addParameter(LegatoPortamentoDelay, "Legato Portamento Delay", -1000.
 dispatcher.addParameter(LegatoSlowDelay, "Legato Slow Delay", -1000.0, 1000.0, -300.0, {IsAutomatable})
 dispatcher.addParameter(LegatoMediumDelay, "Legato Medium Delay", -1000.0, 1000.0, -300.0, {IsAutomatable})
 dispatcher.addParameter(LegatoFastDelay, "Legato Fast Delay", -1000.0, 1000.0, -150.0, {IsAutomatable})
+
+dispatcher.onCreateInstance = proc(plugin: AudioPlugin) =
+  let plugin = CsCorrector(plugin)
+  plugin.logic = CsCorrectorLogic()
+
+dispatcher.onDestroyInstance = proc(plugin: AudioPlugin) =
+  discard
 
 dispatcher.onParameterEvent = proc(plugin: AudioPlugin, event: ParameterEvent) =
   let plugin = CsCorrector(plugin)
@@ -50,10 +58,14 @@ dispatcher.onParameterEvent = proc(plugin: AudioPlugin, event: ParameterEvent) =
 dispatcher.onTransportEvent = proc(plugin: AudioPlugin, event: TransportEvent) =
   let plugin = CsCorrector(plugin)
   if IsPlaying in event.flags:
+    plugin.wasPlaying = plugin.isPlaying
     plugin.isPlaying = true
   else:
+    plugin.wasPlaying = plugin.isPlaying
     plugin.isPlaying = false
-    plugin.logic.reset()
+    # Reset the CsCorrector logic on playback stop
+    if plugin.wasPlaying and not plugin.isPlaying:
+      plugin.logic.reset()
 
 dispatcher.onMidiEvent = proc(plugin: AudioPlugin, event: MidiEvent) =
   let plugin = CsCorrector(plugin)
@@ -85,9 +97,13 @@ dispatcher.onMidiEvent = proc(plugin: AudioPlugin, event: MidiEvent) =
     # Don't return because we need to send the hold pedal information
 
   # Pass any events that aren't note on or off straight to the host
+  var event = event
+  event.time += plugin.latency
   plugin.sendMidiEvent(event)
 
 dispatcher.onProcess = proc(plugin: AudioPlugin, frameCount: int) =
+  # Remove the notes within the frame count from the
+  # CsCorrector logic and send them as midi events
   let plugin = CsCorrector(plugin)
   let noteEvents = plugin.logic.extractNoteEvents(frameCount)
 

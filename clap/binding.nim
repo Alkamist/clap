@@ -256,6 +256,14 @@ type
 const CLAP_VERSION_INIT* = clap_version_t(major: 1, minor: 1, revision: 7)
 template clap_version_is_compatible*(v: clap_version_t): bool = v.major >= 1
 
+const CLAP_TRANSPORT_HAS_TEMPO* = 1 shl 0
+const CLAP_TRANSPORT_HAS_BEATS_TIMELINE* = 1 shl 1
+const CLAP_TRANSPORT_HAS_SECONDS_TIMELINE* = 1 shl 2
+const CLAP_TRANSPORT_HAS_TIME_SIGNATURE* = 1 shl 3
+const CLAP_TRANSPORT_IS_PLAYING* = 1 shl 4
+const CLAP_TRANSPORT_IS_RECORDING* = 1 shl 5
+const CLAP_TRANSPORT_IS_LOOP_ACTIVE* = 1 shl 6
+const CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL* = 1 shl 7
 const CLAP_LOG_DEBUG* = 0
 const CLAP_LOG_INFO* = 1
 const CLAP_LOG_WARNING* = 2
@@ -319,8 +327,9 @@ const CLAP_EXT_TIMER_SUPPORT* = cstring"clap.timer-support"
 const CLAP_EXT_LATENCY* = cstring"clap.latency"
 const CLAP_EXT_LOG* = cstring"clap.log"
 const CLAP_EXT_GUI* = cstring"clap.gui"
-
 const CLAP_WINDOW_API_WIN32* = cstring"win32"
 const CLAP_WINDOW_API_COCOA* = cstring"cocoa"
 const CLAP_WINDOW_API_X11* = cstring"x11"
 const CLAP_WINDOW_API_WAYLAND* = cstring"wayland"
+const CLAP_BEATTIME_FACTOR* = 1 shl 31
+const CLAP_SECTIME_FACTOR* = 1 shl 31

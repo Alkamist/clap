@@ -1,5 +1,6 @@
 import ./binding
 import ./shared
+import ./extensions/reaper
 
 var clapFactory = clap_plugin_factory_t(
   get_plugin_count: proc(factory: ptr clap_plugin_factory_t): uint32 {.cdecl.} =
@@ -11,6 +12,8 @@ var clapFactory = clap_plugin_factory_t(
   create_plugin: proc(factory: ptr clap_plugin_factory_t, host: ptr clap_host_t, plugin_id: cstring): ptr clap_plugin_t {.cdecl.} =
     if not clap_version_is_compatible(host.clap_version):
       return nil
+
+    loadReaperFunctions(host)
 
     for i in 0 ..< pluginDispatchers.len:
       if pluginId == pluginDispatchers[i].clapDescriptor.id:

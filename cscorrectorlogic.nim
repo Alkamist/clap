@@ -15,7 +15,8 @@ type
     on*: NoteEvent
     off*: Option[NoteEvent]
 
-  NoteEvent* = ref object
+  NoteEvent* = ref NoteEventObj
+  NoteEventObj* = object
     kind*: NoteEventKind
     time*: int
     key*: int
@@ -90,13 +91,13 @@ proc processNoteOff*(cs: CsCorrectorLogic, time, key, velocity: int) =
       ))
       break
 
-proc extractNoteEvents*(cs: CsCorrectorLogic, frameCount: int): seq[NoteEvent] =
+proc extractNoteEvents*(cs: CsCorrectorLogic, frameCount: int): seq[NoteEventObj] =
   let sortedNoteEvents = cs.getSortedNoteEvents()
   for event in sortedNoteEvents:
     if event.time < frameCount:
       if not event.isSent:
         event.isSent = true
-        result.add(event)
+        result.add(event[])
     else:
       break
   cs.removeSentEvents()

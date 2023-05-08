@@ -1,5 +1,6 @@
 {.experimental: "overloadableEnums".}
 
+import std/options; export options
 import std/tables; export tables
 import std/locks; export locks
 import std/typetraits; export typetraits
@@ -33,11 +34,11 @@ type
     else:
       discard
 
+  TimeSignature* = object
+    numerator*: int
+    denominator*: int
+
   TransportFlag* = enum
-    HasTempo
-    HasBeats
-    HasSeconds
-    HasTimeSignature
     IsPlaying
     IsRecording
     LoopIsActive
@@ -46,22 +47,21 @@ type
   TransportEvent* = object
     flags*: set[TransportFlag]
 
-    songPositionBeats*: float
-    songPositionSeconds*: float
+    songPositionSeconds*: Option[float]
+    loopStartSeconds*: Option[float]
+    loopEndSeconds*: Option[float]
 
-    loopStartBeats*: float
-    loopEndBeats*: float
-    loopStartSeconds*: float
-    loopEndSeconds*: float
+    songPositionBeats*: Option[float]
+    loopStartBeats*: Option[float]
+    loopEndBeats*: Option[float]
 
-    tempo*: float
-    tempoIncrement*: float
+    tempo*: Option[float]
+    tempoIncrement*: Option[float]
 
-    barStart*: float
-    barNumber*: int
+    barStartBeats*: Option[float]
+    barNumber*: Option[int]
 
-    timeSignatureNumerator*: int
-    timeSignatureDenominator*: int
+    timeSignature*: Option[TimeSignature]
 
   ParameterFlag* = enum
     IsStepped
@@ -108,8 +108,12 @@ type
     audioThreadParameterValue*: seq[float]
     audioThreadParameterChanged*: seq[bool]
     outputMidiEvents*: seq[MidiEvent]
+    debugString*: string
+    debugStringChanged*: bool
 
   AudioPluginDispatcher* = ref object
+    onCreateInstance*: proc(plugin: AudioPlugin)
+    onDestroyInstance*: proc(plugin: AudioPlugin)
     onParameterEvent*: proc(plugin: AudioPlugin, event: ParameterEvent)
     onTransportEvent*: proc(plugin: AudioPlugin, event: TransportEvent)
     onMidiEvent*: proc(plugin: AudioPlugin, event: MidiEvent)
@@ -143,11 +147,15 @@ template writeStringToBuffer*(str: string, buffer, length: untyped) =
 # Log
 # =======================================================================================
 
+# proc debug*(instance: AudioPlugin, msg: string) =
+#   if instance.clapHostLog == nil or
+#      instance.clapHostLog.log == nil:
+#     return
+#   instance.clapHostLog.log(instance.clapHost, CLAP_LOG_DEBUG, cstring(msg))
+
 proc debug*(instance: AudioPlugin, msg: string) =
-  if instance.clapHostLog == nil or
-     instance.clapHostLog.log == nil:
-    return
-  instance.clapHostLog.log(instance.clapHost, CLAP_LOG_DEBUG, cstring(msg))
+  instance.debugString &= msg & "\n"
+  instance.debugStringChanged = true
 
 # =======================================================================================
 # Parameters
@@ -195,7 +203,16 @@ proc handleParameterValueEvent*(instance: AudioPlugin, event: ptr clap_event_par
   instance.audioThreadParameterValue[id] = event.value
   instance.audioThreadParameterChanged[id] = true
   instance.parameterLock.release()
-
+  if instance.dispatcher.onParameterEvent != nil:
+    instance.dispatcher.onParameterEvent(instance, ParameterEvent(
+      index: int(event.param_id),
+      kind: Value,
+      noteId: event.note_id,
+      port: event.port_index,
+      channel: event.channel,
+      key: event.key,
+      value: event.value,
+    ))
 
 # =======================================================================================
 # Timer
@@ -233,7 +250,7 @@ proc setLatency*(instance: AudioPlugin, value: int) =
      instance.clapHost.requestRestart == nil:
       return
 
-  # Inform the host of the latency change.
+  # Inform the host of the latency change
   instance.clapHostLatency.changed(instance.clapHost)
   if instance.isActive:
     instance.clapHost.requestRestart(instance.clapHost)
