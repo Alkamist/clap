@@ -4,8 +4,9 @@ import ./shared
 import ./extensions/latency
 import ./extensions/noteports
 import ./extensions/parameters
-import ./extensions/timer
 import ./extensions/reaper
+import ./extensions/state
+import ./extensions/timer
 
 proc pluginInit*(plugin: ptr clap_plugin_t): bool {.cdecl.} =
   let instance = plugin.getInstance()
@@ -183,4 +184,5 @@ proc pluginGetExtension*(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdec
   if id == CLAP_EXT_NOTE_PORTS: return addr(noteportsExtension)
   if id == CLAP_EXT_PARAMS: return addr(parametersExtension)
   if id == CLAP_EXT_TIMER_SUPPORT: return addr(timerExtension)
+  if id == CLAP_EXT_STATE: return addr(stateExtension)
   return nil

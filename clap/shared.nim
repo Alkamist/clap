@@ -118,6 +118,8 @@ type
     onTransportEvent*: proc(plugin: AudioPlugin, event: TransportEvent)
     onMidiEvent*: proc(plugin: AudioPlugin, event: MidiEvent)
     onProcess*: proc(plugin: AudioPlugin, frameCount: int)
+    savePreset*: proc(plugin: AudioPlugin): seq[byte]
+    loadPreset*: proc(plugin: AudioPlugin, data: seq[byte])
     parameterInfo*: seq[ParameterInfo]
     clapDescriptor*: clap_plugin_descriptor_t
     createInstance*: proc(index: int, host: ptr clap_host_t): ptr clap_plugin_t
@@ -161,7 +163,10 @@ proc debug*(instance: AudioPlugin, msg: string) =
 # Parameters
 # =======================================================================================
 
-proc parameter*[P: enum](instance: AudioPlugin, id: P): float =
+proc parameterMainThread*[P: enum](instance: AudioPlugin, id: P): float =
+  instance.mainThreadParameterValue[int(id)]
+
+proc parameterAudioThread*[P: enum](instance: AudioPlugin, id: P): float =
   instance.audioThreadParameterValue[int(id)]
 
 proc parameterCount*(instance: AudioPlugin): int =

@@ -11,6 +11,11 @@ type
     LegatoMediumDelay
     LegatoFastDelay
 
+  CsCorrectorPresetV1* = object
+    size*: uint64
+    version*: uint64
+    parameters*: array[CsCorrectorParameter, float64]
+
   CsCorrector* = ref object of AudioPlugin
     logic*: CsCorrectorLogic
     isPlaying*: bool
@@ -121,3 +126,9 @@ dispatcher.onProcess = proc(plugin: AudioPlugin, frameCount: int) =
       port: 0,
       data: [uint8(status), uint8(noteEvent.key), uint8(noteEvent.velocity)],
     ))
+
+dispatcher.savePreset = proc(plugin: AudioPlugin): seq[byte] =
+  return cast[seq[byte]]("1234567890ASDKFOWEFKKADVLOKFAOLDSVKOAKREOFKQOEWFKQOWEFKCDVLSDASV")
+
+dispatcher.loadPreset = proc(plugin: AudioPlugin, data: seq[byte]) =
+  plugin.debug(cast[string](data))
