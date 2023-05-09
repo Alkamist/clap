@@ -7,6 +7,7 @@ var stateExtension* = clap_plugin_state_t(
     if instance.dispatcher.savePreset == nil:
       return false
 
+    instance.syncParametersAudioThreadToMainThread()
     var preset = instance.dispatcher.savePreset(instance)
 
     var writePtr = addr(preset[0])
@@ -51,8 +52,6 @@ var stateExtension* = clap_plugin_state_t(
 
     instance.parameterLock.acquire()
     instance.dispatcher.loadPreset(instance, preset)
-    for i in 0 ..< instance.parameterCount:
-      instance.mainThreadParameterChanged[i] = true
     instance.parameterLock.release()
 
     return true

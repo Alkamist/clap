@@ -163,11 +163,24 @@ proc debug*(instance: AudioPlugin, msg: string) =
 # Parameters
 # =======================================================================================
 
+proc parameterDefaultValue*[P: enum](instance: AudioPlugin, id: P): float =
+  instance.dispatcher.parameterInfo[int(id)].defaultValue
+
 proc parameterMainThread*[P: enum](instance: AudioPlugin, id: P): float =
   instance.mainThreadParameterValue[int(id)]
 
+proc setParameterMainThread*[P: enum](instance: AudioPlugin, id: P, value: float) =
+  let idInt = int(id)
+  instance.mainThreadParameterValue[idInt] = value
+  instance.mainThreadParameterChanged[idInt] = true
+
 proc parameterAudioThread*[P: enum](instance: AudioPlugin, id: P): float =
   instance.audioThreadParameterValue[int(id)]
+
+proc setParameterAudioThread*[P: enum](instance: AudioPlugin, id: P, value: float) =
+  let idInt = int(id)
+  instance.audioThreadParameterValue[idInt] = value
+  instance.audioThreadParameterChanged[idInt] = true
 
 proc parameterCount*(instance: AudioPlugin): int =
   return instance.dispatcher.parameterInfo.len

@@ -1,5 +1,6 @@
 {.experimental: "codeReordering".}
 
+import std/json
 import ./audioplugin
 import ./cscorrectorlogic
 
@@ -12,9 +13,12 @@ type
     LegatoFastDelay
 
   CsCorrectorPresetV1* = object
-    size*: uint64
-    version*: uint64
-    parameters*: array[CsCorrectorParameter, float64]
+    presetVersion*: int
+    legatoFirstNoteDelay*: float
+    legatoPortamentoDelay*: float
+    legatoSlowDelay*: float
+    legatoMediumDelay*: float
+    legatoFastDelay*: float
 
   CsCorrector* = ref object of AudioPlugin
     logic*: CsCorrectorLogic
@@ -39,14 +43,14 @@ dispatcher.addParameter(LegatoMediumDelay, "Legato Medium Delay", -1000.0, 1000.
 dispatcher.addParameter(LegatoFastDelay, "Legato Fast Delay", -1000.0, 1000.0, -150.0, {IsAutomatable})
 
 dispatcher.onCreateInstance = proc(plugin: AudioPlugin) =
-  let plugin = CsCorrector(plugin)
+  let plugin = cast[CsCorrector](plugin)
   plugin.logic = CsCorrectorLogic()
 
 dispatcher.onDestroyInstance = proc(plugin: AudioPlugin) =
   discard
 
 dispatcher.onParameterEvent = proc(plugin: AudioPlugin, event: ParameterEvent) =
-  let plugin = CsCorrector(plugin)
+  let plugin = cast[CsCorrector](plugin)
   case event.kind:
   of Value:
     let parameter = CsCorrectorParameter(event.index)
@@ -61,7 +65,7 @@ dispatcher.onParameterEvent = proc(plugin: AudioPlugin, event: ParameterEvent) =
     discard
 
 dispatcher.onTransportEvent = proc(plugin: AudioPlugin, event: TransportEvent) =
-  let plugin = CsCorrector(plugin)
+  let plugin = cast[CsCorrector](plugin)
   if IsPlaying in event.flags:
     plugin.wasPlaying = plugin.isPlaying
     plugin.isPlaying = true
@@ -73,7 +77,7 @@ dispatcher.onTransportEvent = proc(plugin: AudioPlugin, event: TransportEvent) =
       plugin.logic.reset()
 
 dispatcher.onMidiEvent = proc(plugin: AudioPlugin, event: MidiEvent) =
-  let plugin = CsCorrector(plugin)
+  let plugin = cast[CsCorrector](plugin)
 
   # Don't process when project is not playing back so there isn't
   # an annoying delay when drawing notes on the piano roll
@@ -109,7 +113,7 @@ dispatcher.onMidiEvent = proc(plugin: AudioPlugin, event: MidiEvent) =
 dispatcher.onProcess = proc(plugin: AudioPlugin, frameCount: int) =
   # Remove the notes within the frame count from the
   # CsCorrector logic and send them as midi events
-  let plugin = CsCorrector(plugin)
+  let plugin = cast[CsCorrector](plugin)
   let noteEvents = plugin.logic.extractNoteEvents(frameCount)
 
   for i in 0 ..< noteEvents.len:
@@ -128,7 +132,25 @@ dispatcher.onProcess = proc(plugin: AudioPlugin, frameCount: int) =
     ))
 
 dispatcher.savePreset = proc(plugin: AudioPlugin): seq[byte] =
-  return cast[seq[byte]]("1234567890ASDKFOWEFKKADVLOKFAOLDSVKOAKREOFKQOEWFKQOWEFKCDVLSDASV")
+  let preset = CsCorrectorPresetV1(
+    presetVersion: 1,
+    legatoFirstNoteDelay: plugin.parameterMainThread(LegatoFirstNoteDelay),
+    legatoPortamentoDelay: plugin.parameterMainThread(LegatoPortamentoDelay),
+    legatoSlowDelay: plugin.parameterMainThread(LegatoSlowDelay),
+    legatoMediumDelay: plugin.parameterMainThread(LegatoMediumDelay),
+    legatoFastDelay: plugin.parameterMainThread(LegatoFastDelay),
+  )
+  let presetJson = %*preset
+  return cast[seq[byte]]($presetJson)
 
 dispatcher.loadPreset = proc(plugin: AudioPlugin, data: seq[byte]) =
-  plugin.debug(cast[string](data))
+  let presetJson = parseJson(cast[string](data))
+
+  template loadParameter(id, key): untyped =
+    plugin.setParameterMainThread(id, presetJson{key}.getFloat(plugin.parameterDefaultValue(id)))
+
+  loadParameter(LegatoFirstNoteDelay, "legatoFirstNoteDelay")
+  loadParameter(LegatoPortamentoDelay, "legatoPortamentoDelay")
+  loadParameter(LegatoSlowDelay, "legatoSlowDelay")
+  loadParameter(LegatoMediumDelay, "legatoMediumDelay")
+  loadParameter(LegatoFastDelay, "legatoFastDelay")
