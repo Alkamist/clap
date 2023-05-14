@@ -9,14 +9,14 @@
         "-d:release",
         //"--nimcache:cache",
         //"--threads:on",
-        "--cc:vcc",
+        // "--cc:vcc",
         "--app:lib",
         "--gc:arc",
         "--exceptions:goto",
         "--noMain",
         "--debugger:native",
-        "--o:cscorrector.clap",
-        "cscorrector.nim"
+        "--o:csscorrector.clap",
+        "csscorrector.nim"
       ],
       "options": {
         "cwd": "${workspaceRoot}"
