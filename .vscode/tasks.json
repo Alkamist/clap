@@ -7,13 +7,13 @@
       "args": [
         "c",
         "-d:release",
-        //"--nimcache:cache",
-        //"--threads:on",
+        // "--nimcache:cache",
+        "--threads:on",
         // "--cc:vcc",
         "--app:lib",
         "--gc:arc",
-        "--exceptions:goto",
-        "--noMain",
+        // "--exceptions:goto",
+        // "--noMain",
         "--debugger:native",
         "--o:csscorrector.clap",
         "csscorrector.nim"

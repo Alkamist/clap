@@ -211,7 +211,7 @@ type
     start_processing*: proc(plugin: ptr clap_plugin_t): bool {.cdecl.}
     stop_processing*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
     reset*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
-    process*: proc(plugin: ptr clap_plugin_t, process: ptr clap_process_t): int32 {.cdecl.}
+    process*: proc(plugin: ptr clap_plugin_t, process: ptr clap_process_t): clap_process_status {.cdecl.}
     get_extension*: proc(plugin: ptr clap_plugin_t, id: cstring): pointer {.cdecl.}
     on_main_thread*: proc(plugin: ptr clap_plugin_t) {.cdecl.}
 
