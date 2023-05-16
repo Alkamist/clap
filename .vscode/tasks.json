@@ -12,11 +12,9 @@
         // "--cc:vcc",
         "--app:lib",
         "--gc:arc",
-        // "--exceptions:goto",
-        // "--noMain",
         "--debugger:native",
-        "--o:csscorrector.clap",
-        "csscorrector.nim"
+        "--o:demo.clap",
+        "demo.nim"
       ],
       "options": {
         "cwd": "${workspaceRoot}"

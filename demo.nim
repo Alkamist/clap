@@ -108,41 +108,19 @@ var clapFactory = clap_plugin_factory_t(
       return addr(plugin.clapPlugin)
 )
 
-# These three functions go in the plugin entry struct.
-# I don't know how to do this without the emit pragma
-# since Nim doesn't seem to want to export a struct variable.
+# proc nimMain() {.importc: "NimMain".}
 
-proc mainInit(plugin_path: cstring): bool {.cdecl.} =
-  return true
-
-proc mainDeinit() {.cdecl.} =
-  discard
-
-proc mainGetFactory(factoryId: cstring): pointer {.cdecl.} =
-  if factoryId == CLAP_PLUGIN_FACTORY_ID:
-    return addr(clapFactory)
-
-{.emit: """/*VARSECTION*/
-#if !defined(CLAP_EXPORT)
-#   if defined _WIN32 || defined __CYGWIN__
-#      ifdef __GNUC__
-#         define CLAP_EXPORT __attribute__((dllexport))
-#      else
-#         define CLAP_EXPORT __declspec(dllexport)
-#      endif
-#   else
-#      if __GNUC__ >= 4 || defined(__clang__)
-#         define CLAP_EXPORT __attribute__((visibility("default")))
-#      else
-#         define CLAP_EXPORT
-#      endif
-#   endif
-#endif
-
-CLAP_EXPORT const `clap_plugin_entry_t` clap_entry = {
-  .clap_version = {1, 1, 8},
-  .init = `mainInit`,
-  .deinit = `mainDeinit`,
-  .get_factory = `mainGetFactory`,
-};
-""".}
+var clap_entry {.exportc, dynlib.} = clap_plugin_entry_t(
+  clap_version: CLAP_VERSION_INIT,
+  init: proc(plugin_path: cstring): bool {.cdecl.} =
+    # nimMain()
+    return true
+  ,
+  deinit: proc() {.cdecl.} =
+    discard
+  ,
+  get_factory: proc(factoryId: cstring): pointer {.cdecl.} =
+    if factoryId == CLAP_PLUGIN_FACTORY_ID:
+      return addr(clapFactory)
+  ,
+)

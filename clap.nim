@@ -253,7 +253,7 @@ type
     deinit*: proc() {.cdecl.}
     get_factory*: proc(factory_id: cstring): pointer {.cdecl.}
 
-const CLAP_VERSION_INIT* = clap_version_t(major: 1, minor: 1, revision: 7)
+const CLAP_VERSION_INIT* = clap_version_t(major: 1, minor: 1, revision: 8)
 template clap_version_is_compatible*(v: clap_version_t): bool = v.major >= 1
 
 const CLAP_TRANSPORT_HAS_TEMPO* = 1 shl 0
