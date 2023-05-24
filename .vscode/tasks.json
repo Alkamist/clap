@@ -7,14 +7,15 @@
       "args": [
         "c",
         "-d:release",
+        "-d:useMalloc",
         // "--nimcache:cache",
-        "--threads:on",
+        // "--threads:on",
         // "--cc:vcc",
         "--app:lib",
         "--gc:arc",
         "--debugger:native",
-        "--o:demo.clap",
-        "demo.nim"
+        "--o:css_corrector.clap",
+        "css_corrector.nim"
       ],
       "options": {
         "cwd": "${workspaceRoot}"
