@@ -1,49 +1,74 @@
 import clap/public
 
 type
-  Plugin = ref object of AudioPlugin
+  CssCorrectorParameter = enum
+    LegatoFirstNoteDelay
+    LegatoPortamentoDelay
+    LegatoSlowDelay
+    LegatoMediumDelay
+    LegatoFastDelay
+
+  CssCorrector = ref object of AudioPlugin[CssCorrectorParameter]
     foo: int
 
-proc init(plugin: Plugin) =
+proc init(plugin: CssCorrector) =
   discard
 
-proc destroy(plugin: Plugin) =
+proc destroy(plugin: CssCorrector) =
   discard
 
-proc activate(plugin: Plugin) =
+proc activate(plugin: CssCorrector) =
   discard
 
-proc deactivate(plugin: Plugin) =
+proc deactivate(plugin: CssCorrector) =
   discard
 
-proc reset(plugin: Plugin) =
+proc reset(plugin: CssCorrector) =
   discard
 
-proc onParameterEvent(plugin: Plugin, event: ParameterEvent) =
+proc onParameterEvent(plugin: CssCorrector, event: ParameterEvent) =
   discard
 
-proc onTransportEvent(plugin: Plugin, event: TransportEvent) =
+proc onTransportEvent(plugin: CssCorrector, event: TransportEvent) =
   discard
 
-proc onMidiEvent(plugin: Plugin, event: MidiEvent) =
+proc onMidiEvent(plugin: CssCorrector, event: MidiEvent) =
   discard
 
-proc onProcess(plugin: Plugin, frameCount: int) =
-  discard
+# proc onProcess(plugin: CssCorrector, frameCount: int) =
+#   discard
 
-proc savePreset(plugin: Plugin): string =
+proc savePreset(plugin: CssCorrector): string =
   return ""
 
-proc loadPreset(plugin: Plugin, data: openArray[byte]) =
+proc loadPreset(plugin: CssCorrector, data: openArray[byte]) =
   discard
 
-exportClapPlugin[Plugin](
-  id = "com.alkamist.DemoPlugin",
-  name = "Demo Plugin",
+proc makeParam(id: CssCorrectorParameter, name: string, defaultValue: float): ParameterInfo =
+  result.id = int(id)
+  result.name = name
+  result.minValue = -500.0
+  result.maxValue = 500.0
+  result.defaultValue = defaultValue
+  result.flags = {IsAutomatable}
+  result.module = ""
+
+let parameterInfo = [
+  makeParam(LegatoFirstNoteDelay, "Legato First Note Delay", -60.0),
+  makeParam(LegatoPortamentoDelay, "Legato Portamento Delay", -300.0),
+  makeParam(LegatoSlowDelay, "Legato Slow Delay", -300.0),
+  makeParam(LegatoMediumDelay, "Legato Medium Delay", -300.0),
+  makeParam(LegatoFastDelay, "Legato Fast Delay", -150.0),
+]
+
+exportClapPlugin[CssCorrector](
+  id = "com.alkamist.CssCorrector",
+  name = "Css Corrector",
   vendor = "Alkamist Audio",
   url = "",
   manualUrl = "",
   supportUrl = "",
   version = "0.1.0",
   description = "",
+  parameterInfo = parameterInfo,
 )

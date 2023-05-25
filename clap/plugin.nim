@@ -63,8 +63,8 @@ proc pluginInit*[T](plugin: ptr clap_plugin_t): bool {.cdecl.} =
   mixin init
   let plugin = cast[T](plugin.plugin_data)
 
-  # for i in 0 ..< plugin.parameterCount:
-  #   plugin.resetParameterToDefault(i)
+  for i in 0 ..< plugin.parameterValues.len:
+    plugin.resetParameterToDefault(i)
 
   # plugin.clap_host_log = cast(^Clap_Host_Log)(plugin.clap_host->get_extension(CLAP_EXT_LOG))
   plugin.clapHostTimerSupport = cast[ptr clap_host_timer_support_t](plugin.clapHost.get_extension(plugin.clapHost, CLAP_EXT_TIMER_SUPPORT))
@@ -112,11 +112,13 @@ proc pluginReset*[T](plugin: ptr clap_plugin_t) {.cdecl.} =
   plugin.outputEvents.setLen(0)
   plugin.reset()
 
-proc pluginProcess*[T](plugin: ptr clap_plugin_t, process: ptr clap_process_t): clap_process_status {.cdecl.} =
+proc pluginProcess*[T](plugin: ptr clap_plugin_t, clapProcess: ptr clap_process_t): clap_process_status {.cdecl.} =
+  mixin process
+
   let plugin = cast[T](plugin.plugin_data)
 
-  let frameCount = process.frames_count
-  let eventCount = process.in_events.size(process.in_events)
+  let frameCount = clapProcess.frames_count
+  let eventCount = clapProcess.in_events.size(clapProcess.in_events)
   var eventIndex: uint32 = 0
   var nextEventIndex: uint32 = 0
   if eventCount == 0:
@@ -124,11 +126,11 @@ proc pluginProcess*[T](plugin: ptr clap_plugin_t, process: ptr clap_process_t): 
 
   var frame: uint32 = 0
 
-  plugin.dispatchTransportEvent(process.transport)
+  plugin.dispatchTransportEvent(clapProcess.transport)
 
   while frame < frameCount:
     while eventIndex < eventCount and nextEventIndex == frame:
-      var eventHeader = process.in_events.get(process.in_events, eventIndex)
+      var eventHeader = clapProcess.in_events.get(clapProcess.in_events, eventIndex)
       if eventHeader.time != frame:
         nextEventIndex = eventHeader.time
         break
@@ -147,14 +149,14 @@ proc pluginProcess*[T](plugin: ptr clap_plugin_t, process: ptr clap_process_t): 
 
     frame = nextEventIndex
 
-  # plugin.process(int(process.frames_count))
+  # plugin.process(int(clapProcess.frames_count))
 
   # Sort and send output events, then clear the buffer.
   plugin.outputEvents.sort do (x, y: clap_event_midi_t) -> int:
     cmp(x.header.time, y.header.time)
   for event in plugin.outputEvents:
     var event = event
-    discard process.out_events.try_push(process.out_events, cast[ptr clap_event_header_t](addr(event)))
+    discard clapProcess.out_events.try_push(clapProcess.out_events, cast[ptr clap_event_header_t](addr(event)))
 
   plugin.outputEvents.setLen(0)
 

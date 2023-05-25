@@ -1,7 +1,9 @@
+import std/typetraits
 import ./binding
 import ./types; export types
 
 template writeStringToBuffer*(str: string, buffer, length: untyped) =
+  bind elementType
   let strLen = str.len
   for i in 0 ..< int(length):
     if i < strLen:
@@ -15,7 +17,7 @@ proc dispatchParameterEvent*[T](plugin: T, eventHeader: ptr clap_event_header_t)
   case eventHeader.`type`:
   of CLAP_EVENT_PARAM_VALUE:
     var clapEvent = cast[ptr clap_event_param_value_t](eventHeader)
-    # plugin.setParameter(clapEvent.param_id, clapEvent.value)
+    plugin.setParameter(clapEvent.param_id, clapEvent.value)
     plugin.onParameterEvent(ParameterEvent(
       id: int(clapEvent.param_id),
       kind: Value,

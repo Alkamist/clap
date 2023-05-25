@@ -6,6 +6,8 @@ proc save*[T](plugin: ptr clap_plugin_t, stream: ptr clap_ostream_t): bool {.cde
   let plugin = cast[T](plugin.plugin_data)
 
   var preset = plugin.savePreset()
+  if preset.len == 0:
+    return false
 
   var writePtr = addr(preset[0])
   var bytesToWrite = int64(preset.len)
@@ -49,6 +51,9 @@ proc load*[T](plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cde
     if bytesRead < 0:
       return false
 
-  plugin.loadPreset()
+  if preset.len == 0:
+    return false
+
+  plugin.loadPreset(preset)
 
   return true

@@ -24,32 +24,32 @@ proc toClapParamInfoFlags(flags: set[ParameterFlag]): clap_param_info_flags =
 
 proc count*[T](plugin: ptr clap_plugin_t): uint32 {.cdecl.} =
   let plugin = cast[T](plugin.plugin_data)
-  return uint32(plugin.parameterCount)
+  return uint32(plugin.parameterValues.len)
 
 proc getInfo*[T](plugin: ptr clap_plugin_t, param_index: uint32, param_info: ptr clap_param_info_t): bool {.cdecl.} =
+  mixin parameterInfo
   let plugin = cast[T](plugin.plugin_data)
-  if plugin.parameterCount == 0:
+  if plugin.parameterValues.len == 0:
     return false
-  let info = plugin.parameterInfo
-  param_info.id = uint32(info[param_index].id)
-  param_info.flags = info[param_index].flags.toClapParamInfoFlags()
-  writeStringToBuffer(info[param_index].name, param_info.name, CLAP_NAME_SIZE)
-  writeStringToBuffer(info[param_index].module, param_info.module, CLAP_PATH_SIZE)
-  param_info.minValue = info[param_index].minValue
-  param_info.maxValue = info[param_index].maxValue
-  param_info.defaultValue = info[param_index].defaultValue
+  param_info.id = uint32(parameterInfo[param_index].id)
+  param_info.flags = parameterInfo[param_index].flags.toClapParamInfoFlags()
+  writeStringToBuffer(parameterInfo[param_index].name, param_info.name, CLAP_NAME_SIZE)
+  writeStringToBuffer(parameterInfo[param_index].module, param_info.module, CLAP_PATH_SIZE)
+  param_info.minValue = parameterInfo[param_index].minValue
+  param_info.maxValue = parameterInfo[param_index].maxValue
+  param_info.defaultValue = parameterInfo[param_index].defaultValue
   return true
 
 proc getValue*[T](plugin: ptr clap_plugin_t, param_id: clap_id, out_value: ptr float): bool {.cdecl.} =
   let plugin = cast[T](plugin.plugin_data)
-  if plugin.parameterCount == 0:
+  if plugin.parameterValues.len == 0:
     return false
   out_value[] = plugin.parameter(param_id)
   return true
 
 proc valueToText*[T](plugin: ptr clap_plugin_t, param_id: clap_id, value: float, out_buffer: ptr UncheckedArray[char], out_buffer_capacity: uint32): bool {.cdecl.} =
   let plugin = cast[T](plugin.plugin_data)
-  if plugin.parameterCount == 0:
+  if plugin.parameterValues.len == 0:
     return false
   var valueStr = value.formatFloat(ffDecimal, 3)
   writeStringToBuffer(valueStr, out_buffer, out_buffer_capacity)
@@ -57,7 +57,7 @@ proc valueToText*[T](plugin: ptr clap_plugin_t, param_id: clap_id, value: float,
 
 proc textToValue*[T](plugin: ptr clap_plugin_t, param_id: clap_id, param_value_text: cstring, out_value: ptr float): bool {.cdecl.} =
   let plugin = cast[T](plugin.plugin_data)
-  if plugin.parameterCount == 0:
+  if plugin.parameterValues.len == 0:
     return false
   var value: float
   let res = parseutils.parseFloat($param_value_text, value)
