@@ -85,6 +85,6 @@ type
     clapHostLatency*: ptr clap_host_latency_t
     clapHostTimerSupport*: ptr clap_host_timer_support_t
     timerNameToId*: Table[string, clap_id]
-    timerIdToProc*: Table[clap_id, proc(plugin: AudioPlugin[P])]
+    timerIdToProc*: Table[clap_id, proc(plugin: pointer)]
     parameterValues*: array[P, Atomic[float]]
     outputEvents*: seq[clap_event_midi_t]

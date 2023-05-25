@@ -1,4 +1,8 @@
+{.experimental: "codeReordering".}
+
+import std/locks
 import clap/public
+import reaper
 
 type
   CssCorrectorParameter = enum
@@ -9,13 +13,29 @@ type
     LegatoFastDelay
 
   CssCorrector = ref object of AudioPlugin[CssCorrectorParameter]
-    foo: int
+    debugStringMutex: Lock
+    debugString: string
+    debugStringChanged: bool
 
 proc init(plugin: CssCorrector) =
-  discard
+  plugin.debugStringMutex.initLock()
+
+  let reaperPluginInfo = cast[ptr reaper_plugin_info_t](plugin.clapHost.get_extension(plugin.clapHost, "cockos.reaper_extension"))
+  reaper.loadFunctions(reaperPluginInfo)
+
+  plugin.registerTimer("DebugTimer", 0, proc(plugin: pointer) =
+    let plugin = cast[CssCorrector](plugin)
+    if plugin.debugStringChanged:
+      plugin.debugStringMutex.acquire()
+      reaper.ShowConsoleMsg(cstring(plugin.debugString))
+      plugin.debugString = ""
+      plugin.debugStringChanged = false
+      plugin.debugStringMutex.release()
+  )
 
 proc destroy(plugin: CssCorrector) =
-  discard
+  plugin.unregisterTimer("DebugTimer")
+  plugin.debugStringMutex.deinitLock()
 
 proc activate(plugin: CssCorrector) =
   discard
@@ -27,7 +47,7 @@ proc reset(plugin: CssCorrector) =
   discard
 
 proc onParameterEvent(plugin: CssCorrector, event: ParameterEvent) =
-  discard
+  plugin.debug(event)
 
 proc onTransportEvent(plugin: CssCorrector, event: TransportEvent) =
   discard
@@ -72,3 +92,12 @@ exportClapPlugin[CssCorrector](
   description = "",
   parameterInfo = parameterInfo,
 )
+
+proc debug(plugin: CssCorrector, args: varargs[string, `$`]) =
+  var output = ""
+  for arg in args:
+    output &= arg & "\n"
+  plugin.debugStringMutex.acquire()
+  plugin.debugString = output
+  plugin.debugStringChanged = true
+  plugin.debugStringMutex.release()

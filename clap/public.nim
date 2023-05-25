@@ -7,10 +7,10 @@ import ./extensions/parameters
 import ./extensions/state
 import ./extensions/timer
 
-proc millisecondsToSamples*(plugin: AudioPlugin, milliseconds: float): int =
+proc millisecondsToSamples*[P](plugin: AudioPlugin[P], milliseconds: float): int =
   return int(plugin.sampleRate * milliseconds * 0.001)
 
-proc parameterCount*(plugin: AudioPlugin): int =
+proc parameterCount*[P](plugin: AudioPlugin[P]): int =
   return plugin.parameterValues.len
 
 proc parameter*[P](plugin: AudioPlugin[P], id: auto): float =
@@ -23,7 +23,7 @@ proc resetParameterToDefault*[P](plugin: AudioPlugin[P], id: auto) =
   mixin parameterInfo
   plugin.setParameter(id, parameterInfo[int(id)].defaultValue)
 
-proc registerTimer*(plugin: AudioPlugin, name: string, periodMs: int, timerProc: proc(plugin: AudioPlugin)) =
+proc registerTimer*[P](plugin: AudioPlugin[P], name: string, periodMs: int, timerProc: proc(plugin: pointer)) =
   if plugin.clapHostTimerSupport == nil or
      plugin.clapHostTimerSupport.registerTimer == nil:
     return
@@ -33,7 +33,7 @@ proc registerTimer*(plugin: AudioPlugin, name: string, periodMs: int, timerProc:
   plugin.timerNameToId[name] = id
   plugin.timerIdToProc[id] = timerProc
 
-proc unregisterTimer*(plugin: AudioPlugin, name: string) =
+proc unregisterTimer*[P](plugin: AudioPlugin[P], name: string) =
   if plugin.clapHostTimerSupport == nil or
      plugin.clapHostTimerSupport.unregisterTimer == nil:
     return
@@ -43,7 +43,7 @@ proc unregisterTimer*(plugin: AudioPlugin, name: string) =
     discard plugin.clapHostTimerSupport.unregisterTimer(plugin.clapHost, id)
     plugin.timerIdToProc[id] = nil
 
-proc setLatency*(plugin: AudioPlugin, value: int) =
+proc setLatency*[P](plugin: AudioPlugin[P], value: int) =
   plugin.latency = value
 
   if plugin.clapHostLatency == nil or
@@ -56,7 +56,7 @@ proc setLatency*(plugin: AudioPlugin, value: int) =
   if plugin.isActive:
     plugin.clapHost.requestRestart(plugin.clapHost)
 
-proc sendMidiEvent*(plugin: AudioPlugin, event: MidiEvent) =
+proc sendMidiEvent*[T](plugin: T, event: MidiEvent) =
   plugin.outputEvents.add(clap_event_midi_t(
     header: clap_event_header_t(
       size: uint32(sizeof(clap_event_midi_t)),
