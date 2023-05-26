@@ -14,8 +14,8 @@
         "--app:lib",
         "--gc:arc",
         "--debugger:native",
-        "--o:css_corrector.clap",
-        "css_corrector.nim"
+        "--o:csscorrector.clap",
+        "csscorrector.nim"
       ],
       "options": {
         "cwd": "${workspaceRoot}"

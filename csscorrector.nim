@@ -1,8 +1,9 @@
 {.experimental: "codeReordering".}
 
 import std/locks
-import clap/public
 import reaper
+import notequeue as nq
+import audioplugin as ap
 
 type
   CssCorrectorParameter = enum
@@ -33,6 +34,8 @@ proc init(plugin: CssCorrector) =
       plugin.debugStringMutex.release()
   )
 
+  plugin.noteQueue = NoteQueue.new(1024)
+
 proc destroy(plugin: CssCorrector) =
   plugin.unregisterTimer("DebugTimer")
   plugin.debugStringMutex.deinitLock()
@@ -47,7 +50,7 @@ proc reset(plugin: CssCorrector) =
   discard
 
 proc onParameterEvent(plugin: CssCorrector, event: ParameterEvent) =
-  plugin.debug(event)
+  discard
 
 proc onTransportEvent(plugin: CssCorrector, event: TransportEvent) =
   discard
@@ -55,8 +58,8 @@ proc onTransportEvent(plugin: CssCorrector, event: TransportEvent) =
 proc onMidiEvent(plugin: CssCorrector, event: MidiEvent) =
   discard
 
-# proc onProcess(plugin: CssCorrector, frameCount: int) =
-#   discard
+proc onProcess(plugin: CssCorrector, frameCount: int) =
+  discard
 
 proc savePreset(plugin: CssCorrector): string =
   return ""
