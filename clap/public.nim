@@ -19,9 +19,11 @@ proc parameter*[P](plugin: AudioPlugin[P], id: auto): float =
 proc setParameter*[P](plugin: AudioPlugin[P], id: auto, value: float) =
   plugin.parameterValues[P(id)].store(value)
 
+proc parameterDefaultValue*[P](plugin: AudioPlugin[P], id: auto): float =
+  return plugin.parameterInfo[int(id)].defaultValue
+
 proc resetParameterToDefault*[P](plugin: AudioPlugin[P], id: auto) =
-  mixin parameterInfo
-  plugin.setParameter(id, parameterInfo[int(id)].defaultValue)
+  plugin.setParameter(id, plugin.parameterInfo[int(id)].defaultValue)
 
 proc registerTimer*[P](plugin: AudioPlugin[P], name: string, periodMs: int, timerProc: proc(plugin: pointer)) =
   if plugin.clapHostTimerSupport == nil or
@@ -83,6 +85,10 @@ proc exportClapPlugin*[T](
   description: string,
   parameterInfo: openArray[ParameterInfo],
 ) =
+  var parameterInfoSeq {.global.} = newSeq[ParameterInfo](parameterInfo.len)
+  for i in 0 ..< parameterInfo.len:
+    parameterInfoSeq[i] = parameterInfo[i]
+
   var clapDescriptor {.global.}: clap_plugin_descriptor_t
   clapDescriptor.clap_version = CLAP_VERSION_INIT
   clapDescriptor.id = id
@@ -143,6 +149,7 @@ proc exportClapPlugin*[T](
       if pluginId == clapDescriptor.id:
         var plugin = T()
         GcRef(plugin)
+        plugin.parameterInfo = addr(parameterInfoSeq)
         plugin.clapHost = host
         plugin.clapPlugin = clap_plugin_t(
           desc: addr(clapDescriptor),

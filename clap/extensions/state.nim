@@ -32,10 +32,10 @@ proc load*[T](plugin: ptr clap_plugin_t, stream: ptr clap_istream_t): bool {.cde
 
   let plugin = cast[T](plugin.plugin_data)
 
-  var preset: seq[byte]
+  var preset: string
 
   while true:
-    var dataByte: byte
+    var dataByte: char
     var bytesRead = stream.read(stream, addr(dataByte), 1)
 
     # Hit the end of the stream.

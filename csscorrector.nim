@@ -1,8 +1,8 @@
 {.experimental: "codeReordering".}
 
+import std/json
 import std/locks
 import reaper
-import notequeue as nq
 import audioplugin as ap
 import logic
 
@@ -13,6 +13,14 @@ type
     LegatoSlowDelay
     LegatoMediumDelay
     LegatoFastDelay
+
+  CssCorrectorPresetV1* = object
+    presetVersion*: int
+    legatoFirstNoteDelay*: float
+    legatoPortamentoDelay*: float
+    legatoSlowDelay*: float
+    legatoMediumDelay*: float
+    legatoFastDelay*: float
 
   CssCorrector = ref object of AudioPlugin[CssCorrectorParameter]
     logic: CsCorrectorLogic
@@ -69,10 +77,28 @@ proc onProcess(plugin: CssCorrector, frameCount: int) =
   plugin.logic.sendNoteEvents(plugin, frameCount)
 
 proc savePreset(plugin: CssCorrector): string =
-  return ""
+  let preset = CssCorrectorPresetV1(
+    presetVersion: 1,
+    legatoFirstNoteDelay: plugin.parameter(LegatoFirstNoteDelay),
+    legatoPortamentoDelay: plugin.parameter(LegatoPortamentoDelay),
+    legatoSlowDelay: plugin.parameter(LegatoSlowDelay),
+    legatoMediumDelay: plugin.parameter(LegatoMediumDelay),
+    legatoFastDelay: plugin.parameter(LegatoFastDelay),
+  )
+  let presetJson = %*preset
+  return $presetJson
 
-proc loadPreset(plugin: CssCorrector, data: openArray[byte]) =
-  discard
+proc loadPreset(plugin: CssCorrector, data: string) =
+  let presetJson = parseJson(data)
+
+  template loadParameter(id, key): untyped =
+    plugin.setParameter(id, presetJson{key}.getFloat(plugin.parameterDefaultValue(id)))
+
+  loadParameter(LegatoFirstNoteDelay, "legatoFirstNoteDelay")
+  loadParameter(LegatoPortamentoDelay, "legatoPortamentoDelay")
+  loadParameter(LegatoSlowDelay, "legatoSlowDelay")
+  loadParameter(LegatoMediumDelay, "legatoMediumDelay")
+  loadParameter(LegatoFastDelay, "legatoFastDelay")
 
 proc makeParam(id: CssCorrectorParameter, name: string, defaultValue: float): ParameterInfo =
   result.id = int(id)

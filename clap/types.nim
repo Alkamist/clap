@@ -87,4 +87,5 @@ type
     timerNameToId*: Table[string, clap_id]
     timerIdToProc*: Table[clap_id, proc(plugin: pointer)]
     parameterValues*: array[P, Atomic[float]]
+    parameterInfo*: ptr seq[ParameterInfo]
     outputEvents*: seq[clap_event_midi_t]
