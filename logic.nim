@@ -19,6 +19,9 @@ type
     legatoDelayTimes*: array[delayCount, int]
     legatoDelayVelocities*: array[delayCount, float]
 
+proc new*(_: typedesc[CsCorrectorLogic]): CsCorrectorLogic =
+  return CsCorrectorLogic(noteQueue: NoteQueue.new(1024))
+
 proc requiredLatency*(logic: CsCorrectorLogic): int =
   var latency = logic.legatoFirstNoteDelay
   for delay in logic.legatoDelayTimes:
@@ -44,11 +47,11 @@ proc processTransportEvent*(logic: CsCorrectorLogic, event: TransportEvent) =
     if logic.wasPlaying and not logic.isPlaying:
       logic.reset()
 
-proc processMidiEvent*(logic: CsCorrectorLogic, event: MidiEvent) =
+proc processMidiEvent*[T](logic: CsCorrectorLogic, plugin: T, event: MidiEvent) =
   # Don't process when project is not playing back so there isn't
   # an annoying delay when drawing notes on the piano roll
   if not logic.isPlaying:
-    logic.sendMidiEvent(event)
+    plugin.sendMidiEvent(event)
     return
 
   let msg = event.data
@@ -75,9 +78,9 @@ proc processMidiEvent*(logic: CsCorrectorLogic, event: MidiEvent) =
   # Pass any events that aren't note on or off straight to the host
   var event = event
   event.time += logic.requiredLatency
-  logic.sendMidiEvent(event)
+  plugin.sendMidiEvent(event)
 
-proc sendNoteEvents*(logic: CsCorrectorLogic, plugin: AudioPlugin, frameCount: int) =
+proc sendNoteEvents*[T](logic: CsCorrectorLogic, plugin: T, frameCount: int) =
   for event in logic.noteQueue.extractEvents(frameCount):
     plugin.sendMidiEvent(event.toMidiEvent())
 

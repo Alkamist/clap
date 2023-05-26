@@ -113,7 +113,7 @@ proc pluginReset*[T](plugin: ptr clap_plugin_t) {.cdecl.} =
   plugin.reset()
 
 proc pluginProcess*[T](plugin: ptr clap_plugin_t, clapProcess: ptr clap_process_t): clap_process_status {.cdecl.} =
-  mixin process
+  mixin onProcess
 
   let plugin = cast[T](plugin.plugin_data)
 
@@ -149,7 +149,7 @@ proc pluginProcess*[T](plugin: ptr clap_plugin_t, clapProcess: ptr clap_process_
 
     frame = nextEventIndex
 
-  # plugin.process(int(clapProcess.frames_count))
+  plugin.onProcess(int(clapProcess.frames_count))
 
   # Sort and send output events, then clear the buffer.
   plugin.outputEvents.sort do (x, y: clap_event_midi_t) -> int:

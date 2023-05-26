@@ -8,6 +8,7 @@
         "c",
         "-d:release",
         "-d:useMalloc",
+        // "-d:nimAllocPagesViaMalloc",
         // "--nimcache:cache",
         // "--threads:on",
         // "--cc:vcc",

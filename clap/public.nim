@@ -70,6 +70,8 @@ proc sendMidiEvent*[T](plugin: T, event: MidiEvent) =
     data: event.data,
   ))
 
+proc NimMain() {.importc.}
+
 proc exportClapPlugin*[T](
   id: string,
   name: string,
@@ -163,6 +165,7 @@ proc exportClapPlugin*[T](
   var clapEntry {.global, exportc: "clap_entry", dynlib.} = clap_plugin_entry_t(
     clap_version: CLAP_VERSION_INIT,
     init: proc(plugin_path: cstring): bool {.cdecl.} =
+      NimMain()
       return true
     ,
     deinit: proc() {.cdecl.} =

@@ -4,6 +4,7 @@ import std/locks
 import reaper
 import notequeue as nq
 import audioplugin as ap
+import logic
 
 type
   CssCorrectorParameter = enum
@@ -14,6 +15,7 @@ type
     LegatoFastDelay
 
   CssCorrector = ref object of AudioPlugin[CssCorrectorParameter]
+    logic: CsCorrectorLogic
     debugStringMutex: Lock
     debugString: string
     debugStringChanged: bool
@@ -34,32 +36,37 @@ proc init(plugin: CssCorrector) =
       plugin.debugStringMutex.release()
   )
 
-  plugin.noteQueue = NoteQueue.new(1024)
+  plugin.logic = CsCorrectorLogic.new()
+  plugin.logic.legatoDelayVelocities[0] = 20
+  plugin.logic.legatoDelayVelocities[1] = 64
+  plugin.logic.legatoDelayVelocities[2] = 100
+  plugin.logic.legatoDelayVelocities[3] = 128
+  plugin.updateLogicParameters()
 
 proc destroy(plugin: CssCorrector) =
   plugin.unregisterTimer("DebugTimer")
   plugin.debugStringMutex.deinitLock()
 
 proc activate(plugin: CssCorrector) =
-  discard
+  plugin.updateLogicParameters()
 
 proc deactivate(plugin: CssCorrector) =
   discard
 
 proc reset(plugin: CssCorrector) =
-  discard
+  plugin.logic.reset()
 
 proc onParameterEvent(plugin: CssCorrector, event: ParameterEvent) =
-  discard
+  plugin.updateLogicParameters()
 
 proc onTransportEvent(plugin: CssCorrector, event: TransportEvent) =
-  discard
+  plugin.logic.processTransportEvent(event)
 
 proc onMidiEvent(plugin: CssCorrector, event: MidiEvent) =
-  discard
+  plugin.logic.processMidiEvent(plugin, event)
 
 proc onProcess(plugin: CssCorrector, frameCount: int) =
-  discard
+  plugin.logic.sendNoteEvents(plugin, frameCount)
 
 proc savePreset(plugin: CssCorrector): string =
   return ""
@@ -104,3 +111,11 @@ proc debug(plugin: CssCorrector, args: varargs[string, `$`]) =
   plugin.debugString = output
   plugin.debugStringChanged = true
   plugin.debugStringMutex.release()
+
+proc updateLogicParameters(plugin: CssCorrector) =
+  plugin.logic.legatoFirstNoteDelay = plugin.millisecondsToSamples(plugin.parameter(LegatoFirstNoteDelay))
+  plugin.logic.legatoDelayTimes[0] = plugin.millisecondsToSamples(plugin.parameter(LegatoPortamentoDelay))
+  plugin.logic.legatoDelayTimes[1] = plugin.millisecondsToSamples(plugin.parameter(LegatoSlowDelay))
+  plugin.logic.legatoDelayTimes[2] = plugin.millisecondsToSamples(plugin.parameter(LegatoMediumDelay))
+  plugin.logic.legatoDelayTimes[3] = plugin.millisecondsToSamples(plugin.parameter(LegatoFastDelay))
+  plugin.setLatency(plugin.logic.requiredLatency)
