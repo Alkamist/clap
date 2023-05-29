@@ -62,8 +62,7 @@ proc sendMidiEvent*[T](plugin: T, event: MidiEvent) =
   plugin.outputEvents.add(clap_event_midi_t(
     header: clap_event_header_t(
       size: uint32(sizeof(clap_event_midi_t)),
-      # after the bug in reaper gets fixed: time = uint32(event.time)
-      time: uint32(event.time - plugin.latency),
+      time: uint32(event.time),
       space_id: CLAP_CORE_EVENT_SPACE_ID,
       type: CLAP_EVENT_MIDI,
       flags: 0,
